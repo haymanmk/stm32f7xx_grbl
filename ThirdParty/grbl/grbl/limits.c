@@ -358,9 +358,6 @@ void limits_go_home(uint8_t cycle_mask)
       }
 
       st_prep_buffer(); // Check and prep segment buffer. NOTE: Should take no longer than 200us.
-    #if defined(STM32F7XX_ARCH)
-      stepEnablePulseCalculate();
-    #endif
 
       // Exit routines: No time to run protocol_execute_realtime() in this loop.
       if (sys_rt_exec_state & (EXEC_SAFETY_DOOR | EXEC_RESET | EXEC_CYCLE_STOP)) {

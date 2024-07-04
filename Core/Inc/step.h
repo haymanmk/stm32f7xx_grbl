@@ -3,6 +3,8 @@
 #define __STEP_H
 
 /* defines */
+#define DOUBLE_BUFFER_SIZE 64
+#define RING_BUFFER_SIZE 10
 #define MAX_TICKS 0xFFFFFFFF                                                                                // maximum value of 32-bit timer
 #define PULSE_WIDTH_US 5UL                                                                                  // pulse width of HIGH state in microseconds
 #define MINIMUN_LOW_PULSE_WIDTH_US 5UL                                                                      // minimum pulse width of LOW state in microseconds
@@ -254,6 +256,34 @@ typedef struct
     do                                                                 \
     {                                                                  \
         if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                        \
+            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                   \
+            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                   \
+            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                   \
+            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+    } while (0);
+
+// Force output pin to HIGH in output compare mode
+#define FORCE_OC_OUTPUT_HIGH(__TIM_HANDLE__, __TIM_CHANNEL__)        \
+    do                                                               \
+    {                                                                \
+        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
+            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                 \
+            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                 \
+            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                 \
+            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+    } while (0);
+
+// Set output pin to LOW in output compare mode when match
+#define SET_OC_OUTPUT_LOW(__TIM_HANDLE__, __TIM_CHANNEL__)           \
+    do                                                                 \
+    {                                                                  \
+        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                        \
             SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
         else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                   \
             SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
@@ -263,22 +293,8 @@ typedef struct
             SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
     } while (0);
 
-// Force output pin to HIGH in output compare mode
-#define FORCE_OC_OUTPUT_HIGH(__TIM_HANDLE__, __TIM_CHANNEL__)        \
-    do                                                               \
-    {                                                                \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
-            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                 \
-            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                 \
-            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                 \
-            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-    } while (0);
-
-// Force output turned into toggle mode in output compare mode
-#define FORCE_OC_OUTPUT_TOGGLE(__TIM_HANDLE__, __TIM_CHANNEL__)      \
+// Set output turned into toggle mode in output compare mode when match
+#define SET_OC_OUTPUT_TOGGLE(__TIM_HANDLE__, __TIM_CHANNEL__)      \
     do                                                               \
     {                                                                \
         if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \

@@ -278,7 +278,7 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
     /* Peripheral clock enable */
     __HAL_RCC_TIM7_CLK_ENABLE();
     /* TIM7 interrupt Init */
-    HAL_NVIC_SetPriority(TIM7_IRQn, 14, 0);
+    HAL_NVIC_SetPriority(TIM7_IRQn, 13, 0);
     HAL_NVIC_EnableIRQ(TIM7_IRQn);
   /* USER CODE BEGIN TIM7_MspInit 1 */
 
@@ -291,6 +291,9 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
   /* USER CODE END TIM14_MspInit 0 */
     /* Peripheral clock enable */
     __HAL_RCC_TIM14_CLK_ENABLE();
+    /* TIM14 interrupt Init */
+    HAL_NVIC_SetPriority(TIM8_TRG_COM_TIM14_IRQn, 14, 0);
+    HAL_NVIC_EnableIRQ(TIM8_TRG_COM_TIM14_IRQn);
   /* USER CODE BEGIN TIM14_MspInit 1 */
 
   /* USER CODE END TIM14_MspInit 1 */
@@ -341,7 +344,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
     PA0/WKUP     ------> TIM5_CH1
     */
     GPIO_InitStruct.Pin = Z_PULSE_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF2_TIM5;
@@ -480,6 +483,9 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim_base)
   /* USER CODE END TIM14_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_TIM14_CLK_DISABLE();
+
+    /* TIM14 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(TIM8_TRG_COM_TIM14_IRQn);
   /* USER CODE BEGIN TIM14_MspDeInit 1 */
 
   /* USER CODE END TIM14_MspDeInit 1 */

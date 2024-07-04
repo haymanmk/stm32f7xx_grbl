@@ -284,6 +284,8 @@ void st_go_idle()
   // Disable Stepper Driver Interrupt. Allow Stepper Port Reset Interrupt to finish, if active.
   TIMSK1 &= ~(1 << OCIE1A);                                       // Disable Timer1 interrupt
   TCCR1B = (TCCR1B & ~((1 << CS12) | (1 << CS11))) | (1 << CS10); // Reset clock to no prescaling.
+#elif defined(STM32F7XX_ARCH)
+  stepDisablePulseCalculate();
 #endif                                                            // AVR_ARCH
 
   busy = false;
@@ -292,6 +294,12 @@ void st_go_idle()
   bool pin_state = false; // Keep enabled.
   if (((settings.stepper_idle_lock_time != 0xff) || sys_rt_exec_alarm || sys.state == STATE_SLEEP) && sys.state != STATE_HOMING)
   {
+    /**
+     * The delay_ms function call can be problematic in the context of RTOS.
+     * When the st_go_idle function is called from an ISR, the delay_ms function calling
+     * will fall into an failure assertion. This is because the delay_ms function is
+     * built from the FreeRTOS Notifier API, which is not allowed to be called from an ISR.
+     */
     // Force stepper dwell to lock axes for a defined amount of time to ensure the axes come to a complete
     // stop and not drift from residual inertial forces at the end of the last movement.
     delay_ms(settings.stepper_idle_lock_time);
@@ -300,11 +308,6 @@ void st_go_idle()
     stepGoIdle();
 #endif // STM32F7XX_ARCH
   }
-#ifdef STM32F7XX_ARCH
-  else
-  {
-  }
-#endif // STM32F7XX_ARCH
 
   if (bit_istrue(settings.flags, BITFLAG_INVERT_ST_ENABLE))
   {
@@ -406,7 +409,10 @@ void stepper_pulse_generation_isr()
 #elif defined(STM32F7XX_ARCH)
   if (stepCalculatePulseData((uint32_t *)(&st)) != HAL_OK)
   {
-    stepDisablePulseCalculate();
+    // no more buffer to accommodate the pulse data in the step agent.
+    // delay 1 ms
+    vTaskDelay(1);
+    // stepDisablePulseCalculate();
     return;
   }
 #endif // AVR_ARCH
@@ -818,6 +824,12 @@ void st_prep_buffer()
   // Block step prep buffer, while in a suspend state and there is no suspend motion to execute.
   if (bit_istrue(sys.step_control, STEP_CONTROL_END_MOTION))
   {
+    if (segment_buffer_tail != segment_buffer_head)
+    {
+      // still have some segments in the buffer need to be executed.
+      stepEnablePulseCalculate();
+    }
+
     return;
   }
 
@@ -839,6 +851,13 @@ void st_prep_buffer()
       }
       if (pl_block == NULL)
       {
+      #if defined(STM32F7XX_ARCH)
+        if (segment_buffer_head != segment_buffer_tail)
+        {
+          // still have some segments in the buffer need to be executed.
+          stepEnablePulseCalculate();
+        }
+      #endif
         return;
       } // No planner blocks. Exit.
 
@@ -1380,6 +1399,13 @@ void st_prep_buffer()
         plan_discard_current_block();
       }
     }
+
+  #if defined(STM32F7XX_ARCH)
+    if (segment_buffer_tail == segment_next_head)
+    {
+      stepEnablePulseCalculate();
+    }
+  #endif
   }
 }
 

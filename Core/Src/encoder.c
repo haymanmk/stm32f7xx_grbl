@@ -16,7 +16,7 @@
 typedef struct
 {
     TIM_HandleTypeDef *htim;
-    uint32_t counter32Bit;
+    int32_t counter32Bit;
     uint16_t prevCounter;
     int16_t revolution;
 } encoder_param_t;
@@ -51,11 +51,11 @@ void encoderReadPositionTask(void *pvParameters)
     {
         // print encoder degree
         encoder_degree_t degree;
-        encoderReadDegree(degree);
+        encoderReadDegree(&degree);
         vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
 
         // Delay for 1 second
-        vTaskDelay(pdMS_TO_TICKS(250));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 

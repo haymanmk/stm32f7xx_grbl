@@ -59,6 +59,7 @@ DMA_HandleTypeDef hdma_tim2_ch2_ch4;
 DMA_HandleTypeDef hdma_tim5_ch1;
 
 /* USER CODE BEGIN PV */
+TaskHandle_t mainGRBLTaskHandle = NULL;
 
 /* USER CODE END PV */
 
@@ -137,7 +138,7 @@ int main(void)
 #endif
 
   // create grbl task
-  xTaskCreate(mainGRBL, "grblTask", configMINIMAL_STACK_SIZE * 4, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(mainGRBL, "grblTask", configMINIMAL_STACK_SIZE * 4, NULL, tskIDLE_PRIORITY, &mainGRBLTaskHandle);
 
   // start scheduler
   vTaskStartScheduler();
@@ -546,9 +547,9 @@ static void MX_TIM14_Init(void)
 
   /* USER CODE END TIM14_Init 1 */
   htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 108;
+  htim14.Init.Prescaler = 0;
   htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim14.Init.Period = 65535;
+  htim14.Init.Period = 107;
   htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
@@ -763,13 +764,13 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -821,9 +822,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   {
     limits_isr(GPIO_Pin);
   }
-  else if ((GPIO_Pin & CONTROL_MASK) != 0)
+  else if ((GPIO_Pin ^ CONTROL_MASK) != 0)
   {
     system_control_pin_isr(GPIO_Pin);
+    // if (utilsDebouncePin(CONTROL_GPIO_GROUP, GPIO_Pin, 10, GPIO_PIN_RESET) == HAL_OK)
+    // {
+    //   system_control_pin_isr(GPIO_Pin);
+    // }
   }
   // else if ((GPIO_Pin & PROBE_MASK) != 0){}
 }
@@ -849,6 +854,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   else if (htim->Instance == TIM7)
   {
     encoderInterruptHandler();
+  }
+  else if (htim->Instance == TIM14)
+  {
+    utilsUsTimerInterruptHandler();
   }
 
   /* USER CODE END Callback 1 */

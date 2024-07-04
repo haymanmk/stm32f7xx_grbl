@@ -15,8 +15,7 @@
 #define N_AXIS NUM_DIMENSIONS
 #define PULSE_FREQ 100000  // Hz
 #define HALF_PERIOD 0x7FFF // 0xFFFF / 2
-#define RING_BUFFER_SIZE 16
-#define GAP_HEAD_TAIL 3 // gap between head and tail, two buffers in used by DMA
+#define GAP_HEAD_TAIL 3    // gap between head and tail, two buffers in used by DMA
 #define STEP_INCREMENT_PERIOD APB1_TIMER_CLOCK / 100
 #define STEP_INCREMENT 3
 
@@ -183,6 +182,16 @@ void stepSetTimerOC4Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
 // initialization of step function
 void stepInit(void)
 {
+    // suspending DMA stream
+    SUSPEND_DMA_STREAM(X_AXIS_TIM_HANDLE.hdma[X_AXIS_PULSE_TIM_DMA_ID]);
+    SUSPEND_DMA_STREAM(Y_AXIS_TIM_HANDLE.hdma[Y_AXIS_PULSE_TIM_DMA_ID]);
+    SUSPEND_DMA_STREAM(Z_AXIS_TIM_HANDLE.hdma[Z_AXIS_PULSE_TIM_DMA_ID]);
+
+    // force output compare mode to inactive
+    FORCE_OC_OUTPUT_LOW((&X_AXIS_TIM_HANDLE), X_AXIS_PULSE_TIM_CHANNEL);
+    FORCE_OC_OUTPUT_LOW((&Y_AXIS_TIM_HANDLE), Y_AXIS_PULSE_TIM_CHANNEL);
+    FORCE_OC_OUTPUT_LOW((&Z_AXIS_TIM_HANDLE), Z_AXIS_PULSE_TIM_CHANNEL);
+
     // initialize axis parameters
     INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, X_AXIS);
     INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, Y_AXIS);
@@ -225,7 +234,7 @@ void stepTask(void *pvParameters)
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_3, GPIO_PIN_SET);
 
     // set general notification to data not available to start the process
-    generalNotification |= (GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
+    generalNotification |= (GENERAL_NOTIFICATION_GET_NEW_BUFFER | GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
 
     // wait notification to calculate pulse data
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -241,9 +250,6 @@ void stepTask(void *pvParameters)
         }
         else
         {
-            // inform to get new free buffer
-            generalNotification |= GENERAL_NOTIFICATION_GET_NEW_BUFFER;
-
             pulse_block_t *pulseBlock = &(pulseRingBuffer[pulseRingBufferHead]);
 
             // check if the pulse block is not empty
@@ -255,6 +261,9 @@ void stepTask(void *pvParameters)
 
                 // clear motion control state
                 pulseRingBuffer[pulseRingBufferHead].motion_control_state = 0;
+
+                // inform to get new free buffer
+                generalNotification |= GENERAL_NOTIFICATION_GET_NEW_BUFFER;
             }
 
             // wait notification to calculate pulse data
@@ -301,6 +310,9 @@ void stepTask(void *pvParameters)
                 // determine if this axis is active or not by checking motion_control_state coming with the pulse data
                 if (pulseBlock->motion_control_state & (1 << i))
                 {
+                    // set output compare mode
+                    SET_OC_OUTPUT_TOGGLE(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
+
                     // start timer output mode with DMA stream
                     stepTimeOCStartDMA(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL, (uint32_t *)pulseData, pulseData->length);
 
@@ -310,7 +322,7 @@ void stepTask(void *pvParameters)
                 else // this axis is not active
                 {
                     // force output pin to low in output compare mode
-                    FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
+                    SET_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
                     // stepSetTimerOC2Mode(timDMAParamsPulse->htim->Instance, TIM_OCMODE_INACTIVE);
                 }
 
@@ -488,7 +500,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
 
         // clear motion control state
         pulseRingBuffer[pulseRingBufferHead].motion_control_state = 0;
-
     }
 
     // set PD4 to low ===> signal the end of pulse calculation
@@ -535,7 +546,7 @@ void stepUpdateDMABuffer(uint32_t address)
                 *pDirOutputPort = (*pDirOutputPort & ~(1 << dirOutputBit)) | (pulseBlock->dir_outbits & (1 << dirOutputBit));
 
                 // force output turned into toggle mode
-                FORCE_OC_OUTPUT_TOGGLE(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL);
+                SET_OC_OUTPUT_TOGGLE(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL);
 
                 // resume DMA stream with updated buffer and length
                 // RESUME_DMA_STREAM_WITH_TC(axisTimerDMAParams[i].htim->hdma[axisTimerDMAParams[i].TIM_DMA_ID], (uint32_t *)pulse, pulse->length);
@@ -585,7 +596,7 @@ void stepUpdateDMABuffer(uint32_t address)
             currentStepperState &= ~(1 << i);
 
             // force output pin to low in output compare mode
-            FORCE_OC_OUTPUT_LOW(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL);
+            SET_OC_OUTPUT_LOW(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL);
         }
     }
 
@@ -780,7 +791,7 @@ void stepWakeUp()
     }
 
     // start pulse calculation
-    stepEnablePulseCalculate();
+    // stepEnablePulseCalculate();
 }
 
 void stepGoIdle()
@@ -792,7 +803,7 @@ void stepGoIdle()
     generalNotification |= GENERAL_NOTIFICATION_FORCE_STOP;
 
     // stop pulse calculation
-    stepDisablePulseCalculate();
+    // stepDisablePulseCalculate();
 }
 
 /**

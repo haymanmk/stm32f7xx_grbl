@@ -256,6 +256,9 @@ void protocol_exec_rt_system()
     // main program processes until either reset or resumed. This ensures a hold completes safely.
     if (rt_exec & (EXEC_MOTION_CANCEL | EXEC_FEED_HOLD | EXEC_SAFETY_DOOR | EXEC_SLEEP)) {
 
+      // ===> Debug Message <===
+      // vLoggingPrintf("HOLD\r\n");
+
       // State check for allowable states for hold methods.
       if (!(sys.state & (STATE_ALARM | STATE_CHECK_MODE))) {
       
@@ -332,6 +335,10 @@ void protocol_exec_rt_system()
       // Block if called at same time as the hold commands: feed hold, motion cancel, and safety door.
       // Ensures auto-cycle-start doesn't resume a hold without an explicit user-input.
       if (!(rt_exec & (EXEC_FEED_HOLD | EXEC_MOTION_CANCEL | EXEC_SAFETY_DOOR))) {
+
+      // ===> Debug Message <===
+      // vLoggingPrintf("START_1\r\n");
+
         // Resume door state when parking motion has retracted and door has been closed.
         if ((sys.state == STATE_SAFETY_DOOR) && !(sys.suspend & SUSPEND_SAFETY_DOOR_AJAR)) {
           if (sys.suspend & SUSPEND_RESTORE_COMPLETE) {
@@ -368,6 +375,10 @@ void protocol_exec_rt_system()
     }
 
     if (rt_exec & EXEC_CYCLE_STOP) {
+
+      // ===> Debug Message <===
+      // vLoggingPrintf("STOP\r\n");
+
       // Reinitializes the cycle plan and stepper system after a feed hold for a resume. Called by
       // realtime command execution in the main program, ensuring that the planner re-plans safely.
       // NOTE: Bresenham algorithm variables are still maintained through both the planner and stepper
@@ -496,9 +507,6 @@ void protocol_exec_rt_system()
   // Reload step segment buffer
   if (sys.state & (STATE_CYCLE | STATE_HOLD | STATE_SAFETY_DOOR | STATE_HOMING | STATE_SLEEP| STATE_JOG)) {
     st_prep_buffer();
-  #if defined(STM32F7XX_ARCH)
-    stepEnablePulseCalculate();
-  #endif
   }
 
 }
