@@ -21,6 +21,10 @@
 
 #include "grbl.h"
 
+#ifdef STM32F7XX_ARCH
+  IO_TYPE limitSwitchTriggered = 0;
+#endif // STM32F7XX_ARCH
+
 
 // Homing axis search distance multiplier. Computed by this value times the cycle travel.
 #ifndef HOMING_AXIS_SEARCH_SCALAR
@@ -89,6 +93,9 @@ void limits_init()
 
     HAL_GPIO_Init(LIMIT_GPIO_GROUP, &GPIO_InitStruct);
 
+    // clear limit switch triggered flag
+    limitSwitchTriggered = 0;
+
   #endif // AVR_ARCH
 }
 
@@ -146,10 +153,53 @@ uint8_t limits_get_state()
 
 #if defined(AVR_ARCH)
   ISR(LIMIT_INT_vect) // DEFAULT: Limit pin change interrupt process.
+  {
 #elif defined(STM32F7XX_ARCH)
   void limits_isr(uint16_t GPIO_Pin)
-#endif // AVR_ARCH
   {
+    /**
+     * NOTE: The STM32F7XX_ARCH generates pulsed by timer's output compare mode
+     *       where the state of output pins is toggled when match occurs
+     *       instead of controlling the state of the output pins directly.
+     *       However, in homing process, GRBL is designated to control the state
+     *       of the output pins directly. It would not function correctly in this case.
+     *       Therefore, here, we put an eye on the state of those limit pins
+     *       and force the output pin of the axis whose limit pin is triggered to be low.
+     */
+    if ((sys.state == STATE_HOMING))
+    {
+      // find the axis whose limit pin is triggered
+      uint8_t axis = NUM_DIMENSIONS;
+
+      if (GPIO_Pin & (1 << X_LIMIT_BIT))
+      {
+        axis = X_AXIS;
+      }
+      else if (GPIO_Pin & (1 << Y_LIMIT_BIT))
+      {
+        axis = Y_AXIS;
+      }
+      else if (GPIO_Pin & (1 << Z_LIMIT_BIT))
+      {
+        axis = Z_AXIS;
+      }
+
+      if (axis < NUM_DIMENSIONS && (sys.homing_axis_lock & get_step_pin_mask(axis)))
+      
+      {
+        // print debug message
+        vLoggingPrintf("Limit pin triggered: %d\n", axis);
+
+        // block the axis
+        stepBlockAxis(axis);
+
+        // set the limit switch triggered flag
+        limitSwitchTriggered |= (1 << axis);
+      }
+
+      return;
+    }
+#endif // AVR_ARCH
     // Ignore limit switches if already in an alarm state or in-process of executing an alarm.
     // When in the alarm state, Grbl should have been reset or will force a reset, so any pending
     // moves in the planner and serial buffers are all cleared and newly sent blocks will be
@@ -253,6 +303,11 @@ void limits_go_home(uint8_t cycle_mask)
   uint8_t limit_state, n_active_axis;
   do {
 
+  #ifdef STM32F7XX_ARCH
+    // clear limit switch triggered flag
+    limitSwitchTriggered = 0;
+  #endif // STM32F7XX_ARCH
+
     system_convert_array_steps_to_mpos(target,sys_position);
 
     // Initialize and declare variables needed for homing routine.
@@ -310,8 +365,14 @@ void limits_go_home(uint8_t cycle_mask)
     st_wake_up(); // Initiate motion
     do {
       if (approach) {
+      #if defined(AVR_ARCH)
         // Check limit state. Lock out cycle axes when they change.
         limit_state = limits_get_state();
+      #elif defined(STM32F7XX_ARCH)
+        // modify the limit state based on the limit switch triggered flag
+        limit_state = limitSwitchTriggered;
+      #endif
+
         for (idx=0; idx<N_AXIS; idx++) {
           if (axislock & step_pin[idx]) {
             if (limit_state & (1 << idx)) {
@@ -370,6 +431,7 @@ void limits_go_home(uint8_t cycle_mask)
         if (!approach && (limits_get_state() & cycle_mask)) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_PULLOFF); }
         // Homing failure condition: Limit switch not found during approach.
         if (approach && (rt_exec & EXEC_CYCLE_STOP)) { system_set_exec_alarm(EXEC_ALARM_HOMING_FAIL_APPROACH); }
+
         if (sys_rt_exec_alarm) {
           mc_reset(); // Stop motors, if they are running.
           protocol_execute_realtime();
@@ -387,7 +449,15 @@ void limits_go_home(uint8_t cycle_mask)
       } while (STEP_MASK & axislock);
     #endif
 
+#ifdef STM32F7XX_ARCH
+    // disable IRQ
+    __disable_irq();
+#endif // STM32F7XX_ARCH
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
+#ifdef STM32F7XX_ARCH
+    // enable IRQ
+    __enable_irq();
+#endif // STM32F7XX_ARCH
     delay_ms(settings.homing_debounce_delay); // Delay to allow transient dynamics to dissipate.
 
     // Reverse direction and reset homing rate for locate cycle(s).

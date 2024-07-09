@@ -216,7 +216,9 @@ void mc_homing_cycle(uint8_t cycle_mask)
     }
   #endif
 
+#ifdef AVR_ARCH
   limits_disable(); // Disable hard limits pin change register for cycle duration
+#endif
 
   // -------------------------------------------------------------------------------------
   // Perform homing routine. NOTE: Special motion case. Only system reset works.

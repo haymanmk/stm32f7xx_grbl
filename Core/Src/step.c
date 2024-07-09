@@ -15,9 +15,6 @@
 #define N_AXIS NUM_DIMENSIONS
 #define PULSE_FREQ 100000  // Hz
 #define HALF_PERIOD 0x7FFF // 0xFFFF / 2
-#define GAP_HEAD_TAIL 3    // gap between head and tail, two buffers in used by DMA
-#define STEP_INCREMENT_PERIOD APB1_TIMER_CLOCK / 100
-#define STEP_INCREMENT 3
 
 /* extern variables */
 extern TIM_HandleTypeDef htim2;
@@ -144,9 +141,6 @@ volatile uint32_t generalNotification;
 // current steppers state, which can be used to determine if a stepper shall be re-enabled from idle.
 volatile uint8_t currentStepperState = 0; // bit 0: x axis active, bit 1: y axis active, bit 2: z axis active
 
-// record the axes that their DMA buffer has been updated
-volatile uint8_t DMAUpdatedAxes = 0; // bit 0: x axis, bit 1: y axis, bit 2: z axis
-
 // track DMA transfer completion
 volatile uint8_t DMATransferCompletedAxes = 0; // bit 0: x axis, bit 1: y axis, bit 2: z axis
 
@@ -154,6 +148,8 @@ volatile uint8_t DMATransferCompletedAxes = 0; // bit 0: x axis, bit 1: y axis, 
 volatile uint32_t currentCounterValue = MINIMUN_LOW_PULSE_WIDTH_TICKS;
 
 volatile uint32_t pulseBlockAddress = 0;
+
+volatile static uint8_t blockedAxes = 0; // used during homing cycle
 
 // handle for step task
 TaskHandle_t xHandleStepTask = NULL;
@@ -182,15 +178,39 @@ void stepSetTimerOC4Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
 // initialization of step function
 void stepInit(void)
 {
-    // suspending DMA stream
-    SUSPEND_DMA_STREAM(X_AXIS_TIM_HANDLE.hdma[X_AXIS_PULSE_TIM_DMA_ID]);
-    SUSPEND_DMA_STREAM(Y_AXIS_TIM_HANDLE.hdma[Y_AXIS_PULSE_TIM_DMA_ID]);
-    SUSPEND_DMA_STREAM(Z_AXIS_TIM_HANDLE.hdma[Z_AXIS_PULSE_TIM_DMA_ID]);
+    // stop master timer
+    TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
 
     // force output compare mode to inactive
     FORCE_OC_OUTPUT_LOW((&X_AXIS_TIM_HANDLE), X_AXIS_PULSE_TIM_CHANNEL);
     FORCE_OC_OUTPUT_LOW((&Y_AXIS_TIM_HANDLE), Y_AXIS_PULSE_TIM_CHANNEL);
     FORCE_OC_OUTPUT_LOW((&Z_AXIS_TIM_HANDLE), Z_AXIS_PULSE_TIM_CHANNEL);
+
+    // clear DMA interrupt flag
+    CLEAR_DMA_IT(X_AXIS_TIM_HANDLE.hdma[X_AXIS_PULSE_TIM_DMA_ID]);
+    CLEAR_DMA_IT(Y_AXIS_TIM_HANDLE.hdma[Y_AXIS_PULSE_TIM_DMA_ID]);
+    CLEAR_DMA_IT(Z_AXIS_TIM_HANDLE.hdma[Z_AXIS_PULSE_TIM_DMA_ID]);
+
+    // clear timer capture/compare flag
+    __HAL_TIM_CLEAR_FLAG(&X_AXIS_TIM_HANDLE, X_AXIS_TIM_FLAG_CCx);
+    __HAL_TIM_CLEAR_FLAG(&Y_AXIS_TIM_HANDLE, Y_AXIS_TIM_FLAG_CCx);
+    __HAL_TIM_CLEAR_FLAG(&Z_AXIS_TIM_HANDLE, Z_AXIS_TIM_FLAG_CCx);
+
+    // suspend DMA stream
+    SUSPEND_DMA_STREAM(X_AXIS_TIM_HANDLE.hdma[X_AXIS_PULSE_TIM_DMA_ID]);
+    SUSPEND_DMA_STREAM(Y_AXIS_TIM_HANDLE.hdma[Y_AXIS_PULSE_TIM_DMA_ID]);
+    SUSPEND_DMA_STREAM(Z_AXIS_TIM_HANDLE.hdma[Z_AXIS_PULSE_TIM_DMA_ID]);
+
+    // stop DMA OC mode
+    HAL_TIM_OC_Stop_DMA(&X_AXIS_TIM_HANDLE, X_AXIS_PULSE_TIM_CHANNEL);
+    HAL_TIM_OC_Stop_DMA(&Y_AXIS_TIM_HANDLE, Y_AXIS_PULSE_TIM_CHANNEL);
+    HAL_TIM_OC_Stop_DMA(&Z_AXIS_TIM_HANDLE, Z_AXIS_PULSE_TIM_CHANNEL);
+
+    // write the largest value, 0xFFFFFFFF, in capture/compare register.
+    // prevent the CCxIF flag from being set when the counter is set to 0.
+    __HAL_TIM_SET_COMPARE(&X_AXIS_TIM_HANDLE, X_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
+    __HAL_TIM_SET_COMPARE(&Y_AXIS_TIM_HANDLE, Y_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
+    __HAL_TIM_SET_COMPARE(&Z_AXIS_TIM_HANDLE, Z_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
 
     // initialize axis parameters
     INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, X_AXIS);
@@ -202,16 +222,25 @@ void stepInit(void)
     pulseRingBufferTail = 0;
 
     // initialize general notification
-    generalNotification = 0;
+    generalNotification |= (GENERAL_NOTIFICATION_GET_NEW_BUFFER | GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
 
     // initialize current stepper state
     currentStepperState = 0;
 
-    // initialize completed DMA transfer axes
-    DMAUpdatedAxes = 0;
+    // initialize DMA transfer completed axes
+    DMATransferCompletedAxes = 0;
 
     // initialize current counter value
     currentCounterValue = MINIMUN_LOW_PULSE_WIDTH_TICKS;
+
+    // initialize pulse block address
+    pulseBlockAddress = 0;
+
+    // reset blocked axes
+    blockedAxes = 0;
+
+    // ===> debug message
+    vLoggingPrintf("Step Init\n");
 
     // check if task is created
     if (xHandleStepTask != NULL)
@@ -514,7 +543,7 @@ void stepUpdateDMABuffer(uint32_t address)
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
 
     pulse_block_t *pulseBlock = (pulse_block_t *)address;
-    uint8_t upcomingAxesActiveState = pulseBlock->motion_control_state; // get upcoming axes active state
+    uint8_t upcomingAxesActiveState = pulseBlock->motion_control_state & (~blockedAxes); // get upcoming axes active state
     // check if there is any bit that is set to 0 in currentStepperState
     // and the corresponding bit is set to 1 in upcomingAxesActiveState.
     // make these axes which shall be re-enabled from idle
@@ -643,6 +672,15 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
     //     return;
     // }
 
+    // avoid doing anything if the step agent has been reset from software.
+    if (generalNotification & GENERAL_NOTIFICATION_FIRST_TIME_START)
+    {
+        // set PD6 to low ===> signal the end of ISR
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
+
+        return;
+    }
+
     // set the axis that its DMA transfer is completed
     DMATransferCompletedAxes |= (1 << axis);
 
@@ -650,7 +688,6 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
      * Start Update DMA buffer
      */
     // determine if it should request for new data or not
-    // if (generalNotification & GENERAL_NOTIFICATION_ALL_AXES_DMA_UPDATED)
     if (currentStepperState == DMATransferCompletedAxes)
     {
         // get the available data address
@@ -783,11 +820,11 @@ void stepWakeUp()
         // clear Force stop flag
         generalNotification &= ~GENERAL_NOTIFICATION_FORCE_STOP;
 
-        if (!(generalNotification & GENERAL_NOTIFICATION_FIRST_TIME_START))
-        {
-            // start counter
-            TIM_START_COUNTER(MASTER_TIM_HANDLE); // timer x axis
-        }
+        // if (!(generalNotification & GENERAL_NOTIFICATION_FIRST_TIME_START))
+        // {
+        //     // start counter
+        //     TIM_START_COUNTER(MASTER_TIM_HANDLE); // timer x axis
+        // }
     }
 
     // start pulse calculation
@@ -944,6 +981,26 @@ void stepSetTimerOC4Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode)
 
     /* Write to TIMx CCER */
     TIMx->CCER = tmpccer;
+}
+
+void stepBlockAxis(uint8_t axis)
+{
+    // get timer and DMA parameters of this axis
+    TIM_DMA_Parameters_t *timDMAParamsPulse = &axisTimerDMAParams[axis];
+
+    // suspend DMA stream
+    SUSPEND_DMA_STREAM(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
+
+    // clear DMA interrupt flag
+    CLEAR_DMA_IT(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
+
+    // force output pin to low in output compare mode
+    FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
+
+    DMATransferCompletedAxes |= (1 << axis);
+
+    // set the axis to idle
+    blockedAxes |= (1 << axis);
 }
 
 /* ===================================================================== */

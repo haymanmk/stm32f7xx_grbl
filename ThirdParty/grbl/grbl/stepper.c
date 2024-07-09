@@ -47,16 +47,16 @@
 #define MAX_AMASS_LEVEL 3
 // AMASS_LEVEL0: Normal operation. No AMASS. No upper cutoff frequency. Starts at LEVEL1 cutoff frequency.
 #if defined(AVR_ARCH)
-  #define AMASS_LEVEL1 (F_CPU / 8000) // Over-drives ISR (x2). Defined as F_CPU/(Cutoff frequency in Hz)
-  #define AMASS_LEVEL2 (F_CPU / 4000) // Over-drives ISR (x4)
-  #define AMASS_LEVEL3 (F_CPU / 2000) // Over-drives ISR (x8)
-#elif defined(STM32F7XX_ARCH) // F_CPU = 108MHz for STM32F7XX which is the clock frequency of APB1 for TIM2 and TIM5
-  #define AMASS_LEVEL1 (uint32_t)(F_CPU / 8000) // Over-drives ISR (x2). Defined as F_CPU/(Cutoff frequency in Hz)
-  #define AMASS_LEVEL2 (uint32_t)(F_CPU / 4000) // Over-drives ISR (x4)
-  #define AMASS_LEVEL3 (uint32_t)(F_CPU / 2000) // Over-drives ISR (x8)
+#define AMASS_LEVEL1 (F_CPU / 8000)           // Over-drives ISR (x2). Defined as F_CPU/(Cutoff frequency in Hz)
+#define AMASS_LEVEL2 (F_CPU / 4000)           // Over-drives ISR (x4)
+#define AMASS_LEVEL3 (F_CPU / 2000)           // Over-drives ISR (x8)
+#elif defined(STM32F7XX_ARCH)                 // F_CPU = 108MHz for STM32F7XX which is the clock frequency of APB1 for TIM2 and TIM5
+#define AMASS_LEVEL1 (uint32_t)(F_CPU / 8000) // Over-drives ISR (x2). Defined as F_CPU/(Cutoff frequency in Hz)
+#define AMASS_LEVEL2 (uint32_t)(F_CPU / 4000) // Over-drives ISR (x4)
+#define AMASS_LEVEL3 (uint32_t)(F_CPU / 2000) // Over-drives ISR (x8)
 
-  #define MAX_FREQ 100000 // 100kHz
-  #define MIN_CYCLES_PER_TICK (uint32_t)(F_CPU / MAX_FREQ)
+#define MAX_FREQ 100000 // 100kHz
+#define MIN_CYCLES_PER_TICK (uint32_t)(F_CPU / MAX_FREQ)
 #endif
 
 #if MAX_AMASS_LEVEL <= 0
@@ -90,13 +90,13 @@ static st_block_t st_block_buffer[SEGMENT_BUFFER_SIZE - 1];
 // the planner, where the remaining planner block steps still can.
 typedef struct
 {
-  uint16_t n_step;          // Number of step events to be executed for this segment
+  uint16_t n_step; // Number of step events to be executed for this segment
 #if defined(AVR_ARCH)
   uint16_t cycles_per_tick; // Step distance traveled per ISR tick, aka step rate.
 #elif defined(STM32F7XX_ARCH)
   uint32_t cycles_per_tick; // Step distance traveled per ISR tick, aka step rate.
 #endif
-  uint8_t st_block_index;   // Stepper block data index. Uses this information to execute this segment.
+  uint8_t st_block_index; // Stepper block data index. Uses this information to execute this segment.
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
   uint8_t amass_level; // Indicates AMASS level for the ISR to execute this segment
 #else
@@ -198,7 +198,6 @@ typedef struct
 } st_prep_t;
 static st_prep_t prep;
 
-
 /*    BLOCK VELOCITY PROFILE DEFINITION
           __________________________
          /|                        |\     _________________         ^
@@ -286,7 +285,7 @@ void st_go_idle()
   TCCR1B = (TCCR1B & ~((1 << CS12) | (1 << CS11))) | (1 << CS10); // Reset clock to no prescaling.
 #elif defined(STM32F7XX_ARCH)
   stepDisablePulseCalculate();
-#endif                                                            // AVR_ARCH
+#endif // AVR_ARCH
 
   busy = false;
 
@@ -495,6 +494,16 @@ void stepper_pulse_generation_isr()
         spindle_set_speed(SPINDLE_PWM_OFF_VALUE);
       }
 #endif
+
+#if defined(STM32F7XX_ARCH)
+      if (sys.state == STATE_HOMING)
+      {
+        if (pl_block->millimeters)
+        {
+          return;
+        }
+      }
+#endif                                             // STM32F7XX_ARCH
       system_set_exec_state_flag(EXEC_CYCLE_STOP); // Flag main program for cycle end
       return;                                      // Nothing to do but exit.
     }
@@ -851,13 +860,13 @@ void st_prep_buffer()
       }
       if (pl_block == NULL)
       {
-      #if defined(STM32F7XX_ARCH)
-        if (segment_buffer_head != segment_buffer_tail)
+#if defined(STM32F7XX_ARCH)
+        if (segment_buffer_tail != segment_buffer_head)
         {
           // still have some segments in the buffer need to be executed.
           stepEnablePulseCalculate();
         }
-      #endif
+#endif
         return;
       } // No planner blocks. Exit.
 
@@ -1311,25 +1320,25 @@ void st_prep_buffer()
       cycles >>= prep_segment->amass_level;
       prep_segment->n_step <<= prep_segment->amass_level;
     }
-  #if defined(AVR_ARCH)
+#if defined(AVR_ARCH)
     if (cycles < (1UL << 16))
-  #elif defined(STM32F7XX_ARCH)
-    if(cycles < MIN_CYCLES_PER_TICK)
+#elif defined(STM32F7XX_ARCH)
+    if (cycles < MIN_CYCLES_PER_TICK)
     {
       prep_segment->cycles_per_tick = MIN_CYCLES_PER_TICK;
     }
     else if (cycles < 0xffffffff)
-  #endif
+#endif
     {
       prep_segment->cycles_per_tick = cycles;
     } // < 65536 (4.1ms @ 16MHz)
     else
     {
-    #if defined(AVR_ARCH)
+#if defined(AVR_ARCH)
       prep_segment->cycles_per_tick = 0xffff;
-    #elif defined(STM32F7XX_ARCH)
+#elif defined(STM32F7XX_ARCH)
       prep_segment->cycles_per_tick = 0xffffffff;
-    #endif
+#endif
     } // Just set the slowest speed possible.
 #else
                                                                                          // Compute step timing and timer prescalar for normal step generation.
@@ -1400,12 +1409,12 @@ void st_prep_buffer()
       }
     }
 
-  #if defined(STM32F7XX_ARCH)
+#if defined(STM32F7XX_ARCH)
     if (segment_buffer_tail == segment_next_head)
     {
       stepEnablePulseCalculate();
     }
-  #endif
+#endif
   }
 }
 

@@ -5,6 +5,7 @@
 /* defines */
 #define DOUBLE_BUFFER_SIZE 64
 #define RING_BUFFER_SIZE 10
+#define GAP_HEAD_TAIL 3    // gap between head and tail, two buffers in used by DMA
 #define MAX_TICKS 0xFFFFFFFF                                                                                // maximum value of 32-bit timer
 #define PULSE_WIDTH_US 5UL                                                                                  // pulse width of HIGH state in microseconds
 #define MINIMUN_LOW_PULSE_WIDTH_US 5UL                                                                      // minimum pulse width of LOW state in microseconds
@@ -322,5 +323,6 @@ void stepGoIdle();
 void stepEnablePulseCalculate();
 void stepDisablePulseCalculate();
 void stepNotifyContinuePulseCalculation();
+void stepBlockAxis(uint8_t axis);
 
 #endif // __STEP_H

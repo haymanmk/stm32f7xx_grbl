@@ -6,6 +6,7 @@
  * Define Function Prototypes
  */
 void utilsStartUsTimer(TIM_HandleTypeDef *htim);
+void utilsDebounceLimitSwitches(uint16_t GPIO_Pin);
 void utilsDelayMs(uint16_t ms);
 
 /**

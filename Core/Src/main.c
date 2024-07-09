@@ -127,7 +127,7 @@ int main(void)
   // start Timer 1 in encoder mode
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
 
-  // start microsecond timer
+  // start microsecond timer and software timer in FreeRTOS
   utilsStartUsTimer(&htim14);
 
   // init TCP
@@ -622,15 +622,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, EN_LV_SHIFT_Pin|DEBUG_1_Pin|DEBUG_2_Pin|DEBUG_3_Pin
                           |DEBUG_4_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : Z_LIMIT_Pin X_LIMIT_Pin Y_LIMIT_Pin */
-  GPIO_InitStruct.Pin = Z_LIMIT_Pin|X_LIMIT_Pin|Y_LIMIT_Pin;
+  /*Configure GPIO pins : Z_LIMIT_Pin CTRL_RESET_Pin CTRL_FEED_HOLD_Pin CTRL_CYCLE_START_Pin
+                           Y_LIMIT_Pin X_LIMIT_Pin */
+  GPIO_InitStruct.Pin = Z_LIMIT_Pin|CTRL_RESET_Pin|CTRL_FEED_HOLD_Pin|CTRL_CYCLE_START_Pin
+                          |Y_LIMIT_Pin|X_LIMIT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : CTRL_RESET_Pin CTRL_FEED_HOLD_Pin CTRL_CYCLE_START_Pin */
-  GPIO_InitStruct.Pin = CTRL_RESET_Pin|CTRL_FEED_HOLD_Pin|CTRL_CYCLE_START_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
@@ -756,13 +752,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 8, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 10, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
   HAL_NVIC_SetPriority(EXTI3_IRQn, 15, 0);
@@ -773,6 +766,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 9, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -821,11 +817,36 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if ((GPIO_Pin & LIMIT_MASK) != 0)
   {
-    limits_isr(GPIO_Pin);
+    // triggered is low and not triggered is high by default
+    IO_TYPE pinState = (LIMIT_PIN & LIMIT_MASK) ^ LIMIT_MASK;
+
+    // determine whether to trigger limit pin isr or not
+    // with taking into consideration the inverted pin mask
+    // if it is defined.
+  #ifdef INVERT_LIMIT_PIN_MASK
+    pinState ^= INVERT_LIMIT_PIN_MASK;
+  #endif
+    if (pinState & GPIO_Pin)
+      utilsDebounceLimitSwitches(GPIO_Pin);
   }
   else if ((GPIO_Pin ^ CONTROL_MASK) != 0)
   {
-    system_control_pin_isr(GPIO_Pin);
+    // triggered is low and not triggered is high by default
+    // in order to detect the trigger we need to invert the pin state
+    IO_TYPE pinState = (CONTROL_PIN & CONTROL_MASK) ^ CONTROL_MASK;
+
+    // determine whether to trigger control pin isr or not
+    // with taking into consideration the inverted pin mask
+    // if it is defined.
+  #ifdef INVERT_CONTROL_PIN_MASK
+    pinState ^= INVERT_CONTROL_PIN_MASK;
+  #endif
+    if (pinState & GPIO_Pin)
+      system_control_pin_isr(GPIO_Pin);
+
+    /**
+     * TODO: Debounce the control pins
+     */
     // if (utilsDebouncePin(CONTROL_GPIO_GROUP, GPIO_Pin, 10, GPIO_PIN_RESET) == HAL_OK)
     // {
     //   system_control_pin_isr(GPIO_Pin);
