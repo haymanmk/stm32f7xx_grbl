@@ -324,5 +324,6 @@ void stepEnablePulseCalculate();
 void stepDisablePulseCalculate();
 void stepNotifyContinuePulseCalculation();
 void stepBlockAxis(uint8_t axis);
+uint8_t stepIsPulseDataExhausted();
 
 #endif // __STEP_H

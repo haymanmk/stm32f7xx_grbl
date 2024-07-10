@@ -498,10 +498,7 @@ void stepper_pulse_generation_isr()
 #if defined(STM32F7XX_ARCH)
       if (sys.state == STATE_HOMING)
       {
-        if (pl_block->millimeters)
-        {
-          return;
-        }
+        if (pl_block->millimeters) return;
       }
 #endif                                             // STM32F7XX_ARCH
       system_set_exec_state_flag(EXEC_CYCLE_STOP); // Flag main program for cycle end

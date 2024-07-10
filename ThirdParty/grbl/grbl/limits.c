@@ -436,6 +436,9 @@ void limits_go_home(uint8_t cycle_mask)
           mc_reset(); // Stop motors, if they are running.
           protocol_execute_realtime();
           return;
+      #ifdef STM32F7XX_ARCH
+        } else if (!stepIsPulseDataExhausted()) { continue;
+      #endif // STM32F7XX_ARCH
         } else {
           // Pull-off motion complete. Disable CYCLE_STOP from executing.
           system_clear_exec_state_flag(EXEC_CYCLE_STOP);

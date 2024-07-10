@@ -206,8 +206,8 @@ void stepInit(void)
     HAL_TIM_OC_Stop_DMA(&Y_AXIS_TIM_HANDLE, Y_AXIS_PULSE_TIM_CHANNEL);
     HAL_TIM_OC_Stop_DMA(&Z_AXIS_TIM_HANDLE, Z_AXIS_PULSE_TIM_CHANNEL);
 
-    // write the largest value, 0xFFFFFFFF, in capture/compare register.
-    // prevent the CCxIF flag from being set when the counter is set to 0.
+    // write the largest value, 0xFFFFFFFF, in capture/compare register
+    // to prevent the CCxIF flag from being set when the counter is set to 0.
     __HAL_TIM_SET_COMPARE(&X_AXIS_TIM_HANDLE, X_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
     __HAL_TIM_SET_COMPARE(&Y_AXIS_TIM_HANDLE, Y_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
     __HAL_TIM_SET_COMPARE(&Z_AXIS_TIM_HANDLE, Z_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
@@ -1001,6 +1001,11 @@ void stepBlockAxis(uint8_t axis)
 
     // set the axis to idle
     blockedAxes |= (1 << axis);
+}
+
+uint8_t stepIsPulseDataExhausted()
+{
+    return (pulseRingBufferHead == pulseRingBufferTail);
 }
 
 /* ===================================================================== */
