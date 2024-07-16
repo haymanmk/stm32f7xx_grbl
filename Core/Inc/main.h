@@ -74,6 +74,7 @@ void Error_Handler(void);
 #define CTRL_CYCLE_START_EXTI_IRQn EXTI9_5_IRQn
 #define PROBE_Pin GPIO_PIN_6
 #define PROBE_GPIO_Port GPIOE
+#define PROBE_EXTI_IRQn EXTI9_5_IRQn
 #define USER_Btn_Pin GPIO_PIN_13
 #define USER_Btn_GPIO_Port GPIOC
 #define USER_Btn_EXTI_IRQn EXTI15_10_IRQn

@@ -52,22 +52,30 @@ void encoderReadPositionTask(void *pvParameters)
         // print encoder degree
         encoder_degree_t degree;
         encoderReadDegree(&degree);
-        // vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
+        vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
 
         // Delay for 1 second
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
 
 void encoderInterruptHandler()
 {
+    uint16_t currentCounterArr[NUM_DIMENSIONS] = {0};
+
+    // read encoder counter value of each axis at once in order to get simultaneous value
+    for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
+    {
+        encoder_param_t *encoder = &encoder_param[i];
+        currentCounterArr[i] = __HAL_TIM_GET_COUNTER(encoder->htim);
+    }
 
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
         encoder_param_t *encoder = &encoder_param[i];
         // get current counter value
-        uint16_t currentCounter = __HAL_TIM_GET_COUNTER(encoder->htim);
+        uint16_t currentCounter = currentCounterArr[i];
 
         // Detect Overflow / Underflow event to Increase / Decrease revolution counter
         int32_t diff = currentCounter - encoder->prevCounter;
@@ -112,6 +120,18 @@ void encoderReadDegree(encoder_degree_t *degree)
     }
 }
 
+/**
+ * @brief Read the degree value from current timer's counter instead of reading from the recorded value
+ *        which will get more accurate value.
+ */
+void encoderReadInstantDegree(encoder_degree_t *degree)
+{
+    // update counter value
+    encoderInterruptHandler();
+
+    // read degree value
+    encoderReadDegree(degree);
+}
 
 /**
  * TODO: RPM calculation

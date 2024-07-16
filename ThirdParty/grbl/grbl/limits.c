@@ -187,9 +187,6 @@ uint8_t limits_get_state()
       if (axis < NUM_DIMENSIONS && (sys.homing_axis_lock & get_step_pin_mask(axis)))
       
       {
-        // print debug message
-        vLoggingPrintf("Limit pin triggered: %d\n", axis);
-
         // block the axis
         stepBlockAxis(axis);
 
@@ -474,6 +471,27 @@ void limits_go_home(uint8_t cycle_mask)
       max_travel = settings.homing_pulloff;
       homing_rate = settings.homing_seek_rate;
     }
+  
+  #ifdef STM32F7XX_ARCH
+    // reset encoder counter
+    if ((n_cycle-1) == 0)
+    {
+      // check current homing axis
+      if (cycle_mask & (1 << X_AXIS))
+      {
+        encoderResetCounter(X_AXIS);
+      }
+      else if (cycle_mask & (1 << Y_AXIS))
+      {
+        encoderResetCounter(Y_AXIS);
+      }
+      else if (cycle_mask & (1 << Z_AXIS))
+      {
+        encoderResetCounter(Z_AXIS);
+      }
+    }
+
+  #endif // STM32F7XX_ARCH
 
   } while (n_cycle-- > 0);
 

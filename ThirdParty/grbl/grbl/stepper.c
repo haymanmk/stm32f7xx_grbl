@@ -57,6 +57,8 @@
 
 #define MAX_FREQ 100000 // 100kHz
 #define MIN_CYCLES_PER_TICK (uint32_t)(F_CPU / MAX_FREQ)
+
+extern parser_state_t gc_state;
 #endif
 
 #if MAX_AMASS_LEVEL <= 0
@@ -496,9 +498,23 @@ void stepper_pulse_generation_isr()
 #endif
 
 #if defined(STM32F7XX_ARCH)
+
       if (sys.state == STATE_HOMING)
       {
-        if (pl_block->millimeters) return;
+        if (pl_block->millimeters)
+          return;
+      }
+      else if (gc_state.modal.motion != MOTION_MODE_NONE)
+      {
+        if (gc_state.modal.motion == MOTION_MODE_LINEAR || gc_state.modal.motion == MOTION_MODE_SEEK || gc_state.modal.motion == MOTION_MODE_CW_ARC || gc_state.modal.motion == MOTION_MODE_CCW_ARC)
+        {
+          // do nothing
+        }
+        else if ((sys.state == STATE_CYCLE) && !(sys.suspend & SUSPEND_MOTION_CANCEL))
+        {
+          if (pl_block->millimeters)
+            return;
+        }
       }
 #endif                                             // STM32F7XX_ARCH
       system_set_exec_state_flag(EXEC_CYCLE_STOP); // Flag main program for cycle end
@@ -1291,7 +1307,12 @@ void st_prep_buffer()
     float inv_rate = dt / (last_n_steps_remaining - step_dist_remaining); // Compute adjusted step rate inverse
 
     // Compute CPU cycles per step for the prepped segment.
+  #if defined(AVR_ARCH)
     uint32_t cycles = ceil(((uint32_t)TICKS_PER_MICROSECOND * 1000000 * 60) * inv_rate); // (cycles/step)
+  #elif defined(STM32F7XX_ARCH)
+    float inv_rate_1000000 = inv_rate * 1000000;
+    uint32_t cycles = ceil((uint32_t)TICKS_PER_MICROSECOND * 60 * inv_rate_1000000); // (cycles/step)
+  #endif
 
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
     // Compute step timing and multi-axis smoothing level.

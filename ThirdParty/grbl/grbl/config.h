@@ -147,6 +147,9 @@
 #define N_DECIMAL_RATEVALUE_MM    0 // Rate or velocity value in mm/min
 #define N_DECIMAL_SETTINGVALUE    3 // Decimals for floating point setting values
 #define N_DECIMAL_RPMVALUE        0 // RPM value in rotations per min.
+#ifdef STM32F7XX_ARCH
+  #define N_DECIMAL_ENCODERVALUE  3 // Encoder value
+#endif // STM32F7XX_ARCH
 
 // If your machine has two limits switches wired in parallel to one axis, you will need to enable
 // this feature. Since the two switches are sharing a single pin, there is no way for Grbl to tell

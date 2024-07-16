@@ -4,7 +4,7 @@
 
 /* defines */
 #define DOUBLE_BUFFER_SIZE 64
-#define RING_BUFFER_SIZE 10
+#define RING_BUFFER_SIZE 8
 #define GAP_HEAD_TAIL 3    // gap between head and tail, two buffers in used by DMA
 #define MAX_TICKS 0xFFFFFFFF                                                                                // maximum value of 32-bit timer
 #define PULSE_WIDTH_US 5UL                                                                                  // pulse width of HIGH state in microseconds
@@ -108,7 +108,12 @@ typedef struct
                                                                                                                                               : ((__HANDLE__)->Instance->CCR6))
 
 // suspend DMA stream
-#define SUSPEND_DMA_STREAM(__DMA_HANDLE__) __HAL_DMA_DISABLE((__DMA_HANDLE__))
+#define SUSPEND_DMA_STREAM(__DMA_HANDLE__) \
+    do \
+    { \
+        __HAL_DMA_DISABLE((__DMA_HANDLE__)); \
+        while ((__DMA_HANDLE__)->Instance->CR & DMA_SxCR_EN); \
+    } while (0);
 
 // clear all DMA interrupt flags
 // __DMA_HANDLE__ is the DMA_HandleTypeDef structure
@@ -129,6 +134,33 @@ typedef struct
         (__DMA_HANDLE__)->Instance->CR |= DMA_IT_TC;                      \
         __HAL_DMA_ENABLE((__DMA_HANDLE__));                               \
     } while (0);
+
+// disabling and enabling DIER register
+#define OFF_AND_ON_DIER(__TIM_HANDLE__, __CCxDE__) \
+    do                                             \
+    {                                              \
+        (__TIM_HANDLE__)->Instance->DIER &= ~(__CCxDE__); \
+        (__TIM_HANDLE__)->Instance->DIER |= (__CCxDE__);  \
+    } while (0);
+
+// clear pending DMA request in timer by disabling and enabling the DMA request bit in DIER register
+#define CLEAR_PENDING_DMA_REQUEST(__TIM_HANDLE__, __TIM_CHANNEL__) \
+    do                                                         \
+    {                                                          \
+        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1) {                \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC1IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC1DE)     \
+        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2) {        \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC2IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC2DE)     \
+        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3) {        \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC3IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC3DE)     \
+        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4) {        \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC4IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC4DE) }   \
+    } while (0);
+
 
 // Timer start counter
 #define TIM_START_COUNTER(__HANDLE__) ((__HANDLE__).Instance->CR1 |= TIM_CR1_CEN)
@@ -314,6 +346,10 @@ typedef struct
      : (__AXIS__ == Y_AXIS) ? GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_Y_AXIS \
      : (__AXIS__ == Z_AXIS) ? GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_Z_AXIS \
                             : 0)
+
+// generate timer's event
+#define GENERATE_TIM_EVENT(__TIM_HANDLE__, __EVENT__) \
+    ((__TIM_HANDLE__)->Instance->EGR = (__EVENT__))
 
 /* exported functions */
 void stepInit(void);
