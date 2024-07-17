@@ -47,6 +47,8 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+// get axis from GPIO_Pin
+#define GET_AXIS_FROM_GPIO_PIN(GPIO_Pin) (GPIO_Pin == X_LIMIT_Pin ? X_AXIS : (GPIO_Pin == Y_LIMIT_Pin ? Y_AXIS : Z_AXIS))
 
 /* USER CODE END EM */
 

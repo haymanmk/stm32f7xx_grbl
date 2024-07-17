@@ -22,7 +22,7 @@
 #include "grbl.h"
 
 #ifdef STM32F7XX_ARCH
-  IO_TYPE limitSwitchTriggered = 0;
+  uint8_t limitSwitchTriggered = 0; // bit 0: X, bit 1: Y, bit 2: Z
 #endif // STM32F7XX_ARCH
 
 
@@ -367,7 +367,7 @@ void limits_go_home(uint8_t cycle_mask)
         limit_state = limits_get_state();
       #elif defined(STM32F7XX_ARCH)
         // modify the limit state based on the limit switch triggered flag
-        limit_state = limitSwitchTriggered;
+        limit_state = limits_get_state() | limitSwitchTriggered;
       #endif
 
         for (idx=0; idx<N_AXIS; idx++) {

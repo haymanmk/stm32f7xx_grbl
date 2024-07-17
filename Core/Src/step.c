@@ -149,7 +149,7 @@ volatile uint32_t currentCounterValue = MINIMUN_LOW_PULSE_WIDTH_TICKS;
 
 volatile uint32_t pulseBlockAddress = 0;
 
-volatile static uint8_t blockedAxes = 0; // used during homing cycle
+volatile uint8_t stepBlockedAxes = 0; // used during homing cycle
 
 volatile uint8_t OC_DMA_Started = 0; // flag to check if OC DMA is started, bit 0: x axis, bit 1: y axis, bit 2: z axis
 
@@ -223,6 +223,9 @@ void stepInit(void)
     pulseRingBufferHead = 0;
     pulseRingBufferTail = 0;
 
+    // clear the motion control state at the head of the ring buffer
+    pulseRingBuffer[pulseRingBufferHead].motion_control_state = 0;
+
     // initialize general notification
     generalNotification |= (GENERAL_NOTIFICATION_GET_NEW_BUFFER | GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
 
@@ -239,7 +242,7 @@ void stepInit(void)
     pulseBlockAddress = 0;
 
     // reset blocked axes
-    blockedAxes = 0;
+    stepBlockedAxes = 0;
 
     // reset OC DMA started flag
     OC_DMA_Started = 0;
@@ -544,20 +547,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
     // update variables
     currentCounterValue += cycles_per_tick; // * (amass_level + 1);
 
-    // check if any buffer is full of data
-    if (getNewBuffer)
-    {
-        // increment head
-        while (stepRingBufferIncrementHead() == UINT16_MAX)
-        {
-            // wait for the buffer to be available
-            vTaskDelay(1);
-        }
-
-        // clear motion control state
-        pulseRingBuffer[pulseRingBufferHead].motion_control_state = 0;
-    }
-
     // set PD4 to low ===> signal the end of pulse calculation
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_4, GPIO_PIN_RESET);
 
@@ -570,11 +559,12 @@ void stepUpdateDMABuffer(uint32_t address)
     HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
 
     pulse_block_t *pulseBlock = (pulse_block_t *)address;
-    uint8_t upcomingAxesActiveState = pulseBlock->motion_control_state & (~blockedAxes); // get upcoming axes active state
+    uint8_t upcomingAxesActiveState = pulseBlock->motion_control_state & (~stepBlockedAxes); // get upcoming axes active state
     // check if there is any bit that is set to 0 in currentStepperState
     // and the corresponding bit is set to 1 in upcomingAxesActiveState.
     // make these axes which shall be re-enabled from idle
-    uint8_t axisToBeReEnabled = (currentStepperState ^ upcomingAxesActiveState) & upcomingAxesActiveState;
+    // uint8_t axisToBeReEnabled = (currentStepperState ^ upcomingAxesActiveState) & upcomingAxesActiveState;
+    // uint8_t axisToContinue = currentStepperState & upcomingAxesActiveState;
 
     /**
      * Check if there is any axis that shall be re-enabled from idle, resume DMA stream, or turn into idle state
@@ -589,8 +579,8 @@ void stepUpdateDMABuffer(uint32_t address)
         uint8_t dirOutputBit = GET_DIRECTION_BIT_FROM_AXIS(i);
         volatile uint32_t *pDirOutputPort = GET_DIRECTION_PORT_FROM_AXIS(i);
 
-        // check if this axis shall be re-enabled from idle
-        if ((axisToBeReEnabled & (1 << i)) || ((currentStepperState & upcomingAxesActiveState) & (1 << i)))
+        // check if there is any axis shall be re-enabled from idle or resume DMA stream to continue on transferring data
+        if (upcomingAxesActiveState & (1 << i))
         {
             // set the axis to active
             currentStepperState |= (1 << i);
@@ -690,8 +680,13 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
             // clear DMA transfer completed axes
             DMATransferCompletedAxes = 0;
 
-            // restart counter
-            TIM_START_COUNTER(MASTER_TIM_HANDLE);
+            // timer shall not be started as if all axes have been blocked during homing cycle,
+            // take into consideration the blocked axes
+            if (currentStepperState & (~stepBlockedAxes))
+            {
+                // restart counter
+                TIM_START_COUNTER(MASTER_TIM_HANDLE); // timer x axis
+            }
         }
         else
         {
@@ -979,6 +974,9 @@ void stepBlockAxis(uint8_t axis)
     // get timer and DMA parameters of this axis
     TIM_DMA_Parameters_t *timDMAParamsPulse = &axisTimerDMAParams[axis];
 
+    // set the axis to idle
+    stepBlockedAxes |= (1 << axis);
+
     // suspend DMA stream
     SUSPEND_DMA_STREAM(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
 
@@ -989,9 +987,6 @@ void stepBlockAxis(uint8_t axis)
     FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
 
     DMATransferCompletedAxes |= (1 << axis);
-
-    // set the axis to idle
-    blockedAxes |= (1 << axis);
 }
 
 uint8_t stepIsPulseDataExhausted()
