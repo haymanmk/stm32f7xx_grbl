@@ -3,6 +3,9 @@
 #define __STEP_H
 
 /* defines */
+#define DOUBLE_BUFFER_SIZE 64
+#define RING_BUFFER_SIZE 8
+#define GAP_HEAD_TAIL 3    // gap between head and tail, two buffers in used by DMA
 #define MAX_TICKS 0xFFFFFFFF                                                                                // maximum value of 32-bit timer
 #define PULSE_WIDTH_US 5UL                                                                                  // pulse width of HIGH state in microseconds
 #define MINIMUN_LOW_PULSE_WIDTH_US 5UL                                                                      // minimum pulse width of LOW state in microseconds
@@ -105,7 +108,12 @@ typedef struct
                                                                                                                                               : ((__HANDLE__)->Instance->CCR6))
 
 // suspend DMA stream
-#define SUSPEND_DMA_STREAM(__DMA_HANDLE__) __HAL_DMA_DISABLE((__DMA_HANDLE__))
+#define SUSPEND_DMA_STREAM(__DMA_HANDLE__) \
+    do \
+    { \
+        __HAL_DMA_DISABLE((__DMA_HANDLE__)); \
+        while ((__DMA_HANDLE__)->Instance->CR & DMA_SxCR_EN); \
+    } while (0);
 
 // clear all DMA interrupt flags
 // __DMA_HANDLE__ is the DMA_HandleTypeDef structure
@@ -126,6 +134,33 @@ typedef struct
         (__DMA_HANDLE__)->Instance->CR |= DMA_IT_TC;                      \
         __HAL_DMA_ENABLE((__DMA_HANDLE__));                               \
     } while (0);
+
+// disabling and enabling DIER register
+#define OFF_AND_ON_DIER(__TIM_HANDLE__, __CCxDE__) \
+    do                                             \
+    {                                              \
+        (__TIM_HANDLE__)->Instance->DIER &= ~(__CCxDE__); \
+        (__TIM_HANDLE__)->Instance->DIER |= (__CCxDE__);  \
+    } while (0);
+
+// clear pending DMA request in timer by disabling and enabling the DMA request bit in DIER register
+#define CLEAR_PENDING_DMA_REQUEST(__TIM_HANDLE__, __TIM_CHANNEL__) \
+    do                                                         \
+    {                                                          \
+        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1) {                \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC1IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC1DE)     \
+        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2) {        \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC2IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC2DE)     \
+        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3) {        \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC3IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC3DE)     \
+        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4) {        \
+            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC4IF;    \
+            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC4DE) }   \
+    } while (0);
+
 
 // Timer start counter
 #define TIM_START_COUNTER(__HANDLE__) ((__HANDLE__).Instance->CR1 |= TIM_CR1_CEN)
@@ -254,6 +289,34 @@ typedef struct
     do                                                                 \
     {                                                                  \
         if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                        \
+            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                   \
+            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                   \
+            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                   \
+            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
+    } while (0);
+
+// Force output pin to HIGH in output compare mode
+#define FORCE_OC_OUTPUT_HIGH(__TIM_HANDLE__, __TIM_CHANNEL__)        \
+    do                                                               \
+    {                                                                \
+        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
+            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                 \
+            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                 \
+            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                 \
+            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
+    } while (0);
+
+// Set output pin to LOW in output compare mode when match
+#define SET_OC_OUTPUT_LOW(__TIM_HANDLE__, __TIM_CHANNEL__)           \
+    do                                                                 \
+    {                                                                  \
+        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                        \
             SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
         else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                   \
             SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
@@ -263,22 +326,8 @@ typedef struct
             SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
     } while (0);
 
-// Force output pin to HIGH in output compare mode
-#define FORCE_OC_OUTPUT_HIGH(__TIM_HANDLE__, __TIM_CHANNEL__)        \
-    do                                                               \
-    {                                                                \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
-            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                 \
-            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                 \
-            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                 \
-            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_ACTIVE) \
-    } while (0);
-
-// Force output turned into toggle mode in output compare mode
-#define FORCE_OC_OUTPUT_TOGGLE(__TIM_HANDLE__, __TIM_CHANNEL__)      \
+// Set output turned into toggle mode in output compare mode when match
+#define SET_OC_OUTPUT_TOGGLE(__TIM_HANDLE__, __TIM_CHANNEL__)      \
     do                                                               \
     {                                                                \
         if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
@@ -298,6 +347,10 @@ typedef struct
      : (__AXIS__ == Z_AXIS) ? GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_Z_AXIS \
                             : 0)
 
+// generate timer's event
+#define GENERATE_TIM_EVENT(__TIM_HANDLE__, __EVENT__) \
+    ((__TIM_HANDLE__)->Instance->EGR = (__EVENT__))
+
 /* exported functions */
 void stepInit(void);
 HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr);
@@ -306,5 +359,7 @@ void stepGoIdle();
 void stepEnablePulseCalculate();
 void stepDisablePulseCalculate();
 void stepNotifyContinuePulseCalculation();
+void stepBlockAxis(uint8_t axis);
+uint8_t stepIsPulseDataExhausted();
 
 #endif // __STEP_H

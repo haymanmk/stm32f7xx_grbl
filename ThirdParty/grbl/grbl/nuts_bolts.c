@@ -130,7 +130,11 @@ void delay_sec(float seconds, uint8_t mode)
 // which only accepts constants in future compiler releases.
 void delay_ms(uint16_t ms)
 {
+#if defined(AVR_ARCH)
   while ( ms-- ) { _delay_ms(1); }
+#elif defined(STM32F7XX_ARCH)
+  _delay_ms(ms);
+#endif
 }
 
 

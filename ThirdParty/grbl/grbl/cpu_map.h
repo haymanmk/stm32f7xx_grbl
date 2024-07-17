@@ -267,12 +267,12 @@
   #define SERIAL_UDRE
 
   // Define step pulse output pins. NOTE: All step bit pins must be on the same port.
-  #define X_STEP_GPIO_GROUP GPIOA
-  #define Y_STEP_GPIO_GROUP GPIOB
+  #define X_STEP_GPIO_GROUP GPIOB
+  #define Y_STEP_GPIO_GROUP GPIOA
   #define Z_STEP_GPIO_GROUP GPIOA
-  #define X_STEP_BIT      3  // PA3
-  #define Y_STEP_BIT      10 // PB10
-  #define Z_STEP_BIT      0  // PA0
+  #define X_STEP_BIT      10  // PB10
+  #define Y_STEP_BIT      3   // PA3
+  #define Z_STEP_BIT      0   // PA0
   #define STEP_MASK       ((1<<X_STEP_BIT)|(1<<Y_STEP_BIT)|(1<<Z_STEP_BIT)) // All step bits
 
   // Define step direction output pins. NOTE: All direction pins must be on the same port.
@@ -297,8 +297,8 @@
   // NOTE: All limit bit pins must be on the same port, but not on a port with other input pins (CONTROL).
   #define LIMIT_GPIO_GROUP GPIOE
   #define LIMIT_PIN        LIMIT_GPIO_GROUP->IDR
-  #define X_LIMIT_BIT      0  // PE0 EXTI0
-  #define Y_LIMIT_BIT      1  // PE1 EXTI1
+  #define X_LIMIT_BIT      0  // PE10 EXTI0
+  #define Y_LIMIT_BIT      10  // PE10 EXTI15_10
   #define Z_LIMIT_BIT      2  // PE2 EXTI2
   #define LIMIT_MASK     ((1<<X_LIMIT_BIT)|(1<<Y_LIMIT_BIT)|(1<<Z_LIMIT_BIT)) // All limit bits
 

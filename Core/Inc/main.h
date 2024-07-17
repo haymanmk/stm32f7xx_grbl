@@ -47,6 +47,8 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+// get axis from GPIO_Pin
+#define GET_AXIS_FROM_GPIO_PIN(GPIO_Pin) (GPIO_Pin == X_LIMIT_Pin ? X_AXIS : (GPIO_Pin == Y_LIMIT_Pin ? Y_AXIS : Z_AXIS))
 
 /* USER CODE END EM */
 
@@ -74,8 +76,10 @@ void Error_Handler(void);
 #define CTRL_CYCLE_START_EXTI_IRQn EXTI9_5_IRQn
 #define PROBE_Pin GPIO_PIN_6
 #define PROBE_GPIO_Port GPIOE
+#define PROBE_EXTI_IRQn EXTI9_5_IRQn
 #define USER_Btn_Pin GPIO_PIN_13
 #define USER_Btn_GPIO_Port GPIOC
+#define USER_Btn_EXTI_IRQn EXTI15_10_IRQn
 #define STEP_DISABLE_Pin GPIO_PIN_6
 #define STEP_DISABLE_GPIO_Port GPIOF
 #define COOLANT_Pin GPIO_PIN_7
@@ -108,6 +112,9 @@ void Error_Handler(void);
 #define RMII_RXD1_GPIO_Port GPIOC
 #define LD1_Pin GPIO_PIN_0
 #define LD1_GPIO_Port GPIOB
+#define Y_LIMIT_Pin GPIO_PIN_10
+#define Y_LIMIT_GPIO_Port GPIOE
+#define Y_LIMIT_EXTI_IRQn EXTI15_10_IRQn
 #define X_PULSE_Pin GPIO_PIN_10
 #define X_PULSE_GPIO_Port GPIOB
 #define Y_DIR_Pin GPIO_PIN_11
@@ -159,9 +166,6 @@ void Error_Handler(void);
 #define X_LIMIT_Pin GPIO_PIN_0
 #define X_LIMIT_GPIO_Port GPIOE
 #define X_LIMIT_EXTI_IRQn EXTI0_IRQn
-#define Y_LIMIT_Pin GPIO_PIN_1
-#define Y_LIMIT_GPIO_Port GPIOE
-#define Y_LIMIT_EXTI_IRQn EXTI1_IRQn
 
 /* USER CODE BEGIN Private defines */
 

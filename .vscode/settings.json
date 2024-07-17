@@ -19,6 +19,7 @@
         "string.h": "c",
         "eeprom.h": "c",
         "utils.h": "c",
-        "stm32f7xx_flash_ex.h": "c"
+        "stm32f7xx_flash_ex.h": "c",
+        "timers.h": "c"
     }
 }

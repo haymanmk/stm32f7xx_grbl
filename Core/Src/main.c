@@ -59,6 +59,8 @@ DMA_HandleTypeDef hdma_tim2_ch2_ch4;
 DMA_HandleTypeDef hdma_tim5_ch1;
 
 /* USER CODE BEGIN PV */
+TaskHandle_t mainGRBLTaskHandle = NULL;
+extern uint8_t stepBlockedAxes;
 
 /* USER CODE END PV */
 
@@ -88,6 +90,7 @@ static void MX_TIM14_Init(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -98,6 +101,8 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  // set priority grouping to 0 to pass the assertion of FreeRTOS at port.c
+  HAL_NVIC_SetPriorityGrouping(0);
 
   /* USER CODE END Init */
 
@@ -125,14 +130,19 @@ int main(void)
   // start Timer 1 in encoder mode
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
 
-  // start microsecond timer
+  // start microsecond timer and software timer in FreeRTOS
   utilsStartUsTimer(&htim14);
 
   // init TCP
   tcp_server_init();
 
+#ifdef ENCODER_ENABLE
+  // init encoder
+  encoderInit();
+#endif
+
   // create grbl task
-  xTaskCreate(mainGRBL, "grblTask", configMINIMAL_STACK_SIZE * 4, NULL, tskIDLE_PRIORITY, NULL);
+  xTaskCreate(mainGRBL, "grblTask", configMINIMAL_STACK_SIZE * 4, NULL, tskIDLE_PRIORITY, &mainGRBLTaskHandle);
 
   // start scheduler
   vTaskStartScheduler();
@@ -306,12 +316,13 @@ static void MX_TIM2_Init(void)
   }
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
@@ -541,9 +552,9 @@ static void MX_TIM14_Init(void)
 
   /* USER CODE END TIM14_Init 1 */
   htim14.Instance = TIM14;
-  htim14.Init.Prescaler = 108;
+  htim14.Init.Prescaler = 0;
   htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim14.Init.Period = 65535;
+  htim14.Init.Period = 107;
   htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
@@ -615,23 +626,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, EN_LV_SHIFT_Pin|DEBUG_1_Pin|DEBUG_2_Pin|DEBUG_3_Pin
                           |DEBUG_4_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : Z_LIMIT_Pin X_LIMIT_Pin Y_LIMIT_Pin */
-  GPIO_InitStruct.Pin = Z_LIMIT_Pin|X_LIMIT_Pin|Y_LIMIT_Pin;
+  /*Configure GPIO pins : Z_LIMIT_Pin CTRL_RESET_Pin CTRL_FEED_HOLD_Pin CTRL_CYCLE_START_Pin
+                           PROBE_Pin Y_LIMIT_Pin X_LIMIT_Pin */
+  GPIO_InitStruct.Pin = Z_LIMIT_Pin|CTRL_RESET_Pin|CTRL_FEED_HOLD_Pin|CTRL_CYCLE_START_Pin
+                          |PROBE_Pin|Y_LIMIT_Pin|X_LIMIT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : CTRL_RESET_Pin CTRL_FEED_HOLD_Pin CTRL_CYCLE_START_Pin */
-  GPIO_InitStruct.Pin = CTRL_RESET_Pin|CTRL_FEED_HOLD_Pin|CTRL_CYCLE_START_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PROBE_Pin */
-  GPIO_InitStruct.Pin = PROBE_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(PROBE_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USER_Btn_Pin */
   GPIO_InitStruct.Pin = USER_Btn_Pin;
@@ -749,23 +750,23 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 8, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
-
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 10, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 15, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 14, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 9, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -814,13 +815,48 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if ((GPIO_Pin & LIMIT_MASK) != 0)
   {
-    limits_isr(GPIO_Pin);
+    // triggered is low and not triggered is high by default
+    IO_TYPE pinState = (LIMIT_PIN & LIMIT_MASK) ^ LIMIT_MASK;
+
+    // determine whether to trigger limit pin isr or not
+    // with taking into consideration the inverted pin mask
+    // if it is defined.
+#ifdef INVERT_LIMIT_PIN_MASK
+    pinState ^= INVERT_LIMIT_PIN_MASK;
+#endif
+    if (pinState & GPIO_Pin && !(stepBlockedAxes & (1 << GET_AXIS_FROM_GPIO_PIN(GPIO_Pin))))
+      limits_isr(GPIO_Pin);
   }
   else if ((GPIO_Pin & CONTROL_MASK) != 0)
   {
-    system_control_pin_isr(GPIO_Pin);
+    // triggered is low and not triggered is high by default
+    // in order to detect the trigger we need to invert the pin state
+    IO_TYPE pinState = (CONTROL_PIN & CONTROL_MASK) ^ CONTROL_MASK;
+
+    // determine whether to trigger control pin isr or not
+    // with taking into consideration the inverted pin mask
+    // if it is defined.
+#ifdef INVERT_CONTROL_PIN_MASK
+    pinState ^= INVERT_CONTROL_PIN_MASK;
+#endif
+    if (pinState & GPIO_Pin)
+      system_control_pin_isr(GPIO_Pin);
+
+    /**
+     * TODO: Debounce the control pins
+     */
+    // if (utilsDebouncePin(CONTROL_GPIO_GROUP, GPIO_Pin, 10, GPIO_PIN_RESET) == HAL_OK)
+    // {
+    //   system_control_pin_isr(GPIO_Pin);
+    // }
   }
-  // else if ((GPIO_Pin & PROBE_MASK) != 0){}
+  else if ((GPIO_Pin & PROBE_MASK) != 0)
+  {
+    if (sys_probe_state == PROBE_ACTIVE) // probing is on going
+    {
+      probe_state_monitor();
+    }
+  }
 }
 /* USER CODE END 4 */
 
@@ -843,7 +879,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 1 */
   else if (htim->Instance == TIM7)
   {
-    encoderInterruptHandler(&X_ENCODER_TIM_HANDLE);
+    encoderInterruptHandler();
+  }
+  else if (htim->Instance == TIM14)
+  {
+    utilsUsTimerInterruptHandler();
   }
 
   /* USER CODE END Callback 1 */

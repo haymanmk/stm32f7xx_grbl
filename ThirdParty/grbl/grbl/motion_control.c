@@ -216,7 +216,9 @@ void mc_homing_cycle(uint8_t cycle_mask)
     }
   #endif
 
+#ifdef AVR_ARCH
   limits_disable(); // Disable hard limits pin change register for cycle duration
+#endif
 
   // -------------------------------------------------------------------------------------
   // Perform homing routine. NOTE: Special motion case. Only system reset works.
@@ -303,6 +305,12 @@ uint8_t mc_probe_cycle(float *target, plan_line_data_t *pl_data, uint8_t parser_
   probe_configure_invert_mask(false); // Re-initialize invert mask.
   protocol_execute_realtime();   // Check and execute run-time commands
 
+#ifdef STM32F7XX_ARCH
+  while (!stepIsPulseDataExhausted())
+  {
+    // wait for DMA to finish
+  }
+#endif
   // Reset the stepper and planner buffers to remove the remainder of the probe motion.
   st_reset(); // Reset step segment buffer.
   plan_reset(); // Reset planner buffer. Zero planner positions. Ensure probing motion is cleared.

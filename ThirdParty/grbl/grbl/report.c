@@ -43,6 +43,17 @@ static void report_util_axis_values(float *axis_value) {
     if (idx < (N_AXIS-1)) { serial_write(','); }
   }
 }
+#ifdef STM32F7XX_ARCH
+extern encoder_degree_t probe_encoder_degree;
+static void report_util_axis_encoder_values(encoder_degree_t *degree)
+{
+  // print encoder degree
+  for (uint8_t i = 0; i < N_AXIS; i++) {
+    printFloat(((float*)degree)[i], N_DECIMAL_ENCODERVALUE);
+    if (i < (N_AXIS-1)) { serial_write(','); }
+  }
+}
+#endif // STM32F7XX_ARCH
 
 /*
 static void report_util_setting_string(uint8_t n) {
@@ -236,6 +247,11 @@ void report_probe_parameters()
   system_convert_array_steps_to_mpos(print_position,sys_probe_position);
   report_util_axis_values(print_position);
   serial_write(':');
+#ifdef STM32F7XX_ARCH
+  printPgmString(PSTR("|EPos:"));
+  report_util_axis_encoder_values(&probe_encoder_degree);
+  serial_write(':');
+#endif // STM32F7XX_ARCH
   print_uint8_base10(sys.probe_succeeded);
   report_util_feedback_line_feed();
 }

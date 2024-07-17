@@ -24,6 +24,10 @@
 // Inverts the probe pin state depending on user settings and probing cycle mode.
 IO_TYPE probe_invert_mask;
 
+#ifdef STM32F7XX_ARCH
+  encoder_degree_t probe_encoder_degree;
+#endif // STM32F7XX_ARCH
+
 
 // Probe pin initialization routine.
 void probe_init()
@@ -74,6 +78,9 @@ void probe_state_monitor()
   if (probe_get_state()) {
     sys_probe_state = PROBE_OFF;
     memcpy(sys_probe_position, sys_position, sizeof(sys_position));
+  #ifdef STM32F7XX_ARCH
+    encoderReadInstantDegree(&probe_encoder_degree);
+  #endif // STM32F7XX_ARCH
     bit_true(sys_rt_exec_state, EXEC_MOTION_CANCEL);
   }
 }
