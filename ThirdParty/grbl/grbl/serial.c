@@ -89,6 +89,12 @@ void serial_init()
   UCSR0B |= (1 << RXEN0 | 1 << TXEN0 | 1 << RXCIE0);
 
   // defaults to 8-bit, no parity, 1 stop bit
+#elif defined(STM32F7XX_ARCH)
+  // clear ring buffer
+  serial_rx_buffer_head = 0;
+  serial_rx_buffer_tail = 0;
+  serial_tx_buffer_head = 0;
+  serial_tx_buffer_tail = 0;
 #endif // AVR_ARCH
 }
 

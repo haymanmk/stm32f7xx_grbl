@@ -61,6 +61,7 @@ DMA_HandleTypeDef hdma_tim5_ch1;
 /* USER CODE BEGIN PV */
 TaskHandle_t mainGRBLTaskHandle = NULL;
 extern uint8_t stepBlockedAxes;
+SemaphoreHandle_t loggingSemaphoreHandle;
 
 /* USER CODE END PV */
 
@@ -92,6 +93,10 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  // initialize the handle of semaphore for logging
+  // to protect the critical section in the vLoggingPrintf function.
+  loggingSemaphoreHandle = xSemaphoreCreateBinary();
+  xSemaphoreGive(loggingSemaphoreHandle);
 
   /* USER CODE END 1 */
 
@@ -750,13 +755,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 8, 0);
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 10, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 15, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
   HAL_NVIC_SetPriority(EXTI4_IRQn, 15, 0);
@@ -765,7 +770,7 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 14, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 9, 0);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -776,12 +781,16 @@ static void MX_GPIO_Init(void)
 
 void vLoggingPrintf(const char *pcFormatString, ...)
 {
+  xSemaphoreTake(loggingSemaphoreHandle, portMAX_DELAY);
+
   // SEGGER_SYSVIEW_PrintfTarget(pcFormatString);
   va_list arg;
 
   va_start(arg, pcFormatString);
   vprintf(pcFormatString, arg);
   va_end(arg);
+
+  xSemaphoreGive(loggingSemaphoreHandle);
 }
 
 void vApplicationMallocFailedHook(void)
