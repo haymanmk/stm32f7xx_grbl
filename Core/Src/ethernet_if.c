@@ -5,6 +5,7 @@
 #include "grbl.h"
 
 #define BUFFER_SIZE 512
+#define CONNECTION_CREATED_MSK 1
 
 extern NetworkInterface_t *pxSTM32Fxx_FillInterfaceDescriptor(BaseType_t xEMACIndex,
                                                               NetworkInterface_t *pxInterface);
@@ -17,9 +18,14 @@ struct xNetworkEndPoint xEndPoints[1];
 uint8_t socketShutdownTimeout = 0;
 extern TaskHandle_t xHandleUpdatePulseData;
 TaskHandle_t serialTaskHandle;
+static SemaphoreHandle_t connectionCreatedSemaphoreHandle;
 
 BaseType_t tcp_server_init()
 {
+    /* Initialize Semaphore handler to protect the critical section of 
+       safely shutting down connection */
+    connectionCreatedSemaphoreHandle = xSemaphoreCreateBinary();
+
     /* Initialise the interface descriptor for WinPCap for example. */
     pxSTM32Fxx_FillInterfaceDescriptor(0, &(xInterfaces[0]));
 
@@ -175,7 +181,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
     Socket_t xListeningSocket, xConnectedSocket;
     socklen_t xSize = sizeof(xClient);
     static const TickType_t xReceiveTimeOut = portMAX_DELAY;
-    const BaseType_t xBacklog = 10;
+    const BaseType_t xBacklog = 1;
 
     /* Attempt to open the socket. */
     xListeningSocket = FreeRTOS_socket(FREERTOS_AF_INET4,    /* Or FREERTOS_AF_INET6 for IPv6. */
@@ -220,6 +226,9 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
         xConnectedSocket = FreeRTOS_accept(xListeningSocket, &xClient, &xSize);
         configASSERT(xConnectedSocket != FREERTOS_INVALID_SOCKET);
 
+        /* Give semaphore a count to represent there is a connection that can be shut down. */
+        xSemaphoreGive(connectionCreatedSemaphoreHandle);
+
         /* Spawn a RTOS task to handle the connection. */
         xTaskCreate(prvEchoClientRxTask,
                     "EchoServer",
@@ -245,6 +254,9 @@ void vTimeoutCallback(TimerHandle_t xTimer)
 
 void safelyShutdownSocket(Socket_t xSocket)
 {
+    // beginning of critical section
+    if (xSemaphoreTake(connectionCreatedSemaphoreHandle, pdMS_TO_TICKS(500)) == pdFALSE) return;
+
     // shutdown the socket
     FreeRTOS_shutdown(xSocket, FREERTOS_SHUT_RDWR);
 
@@ -282,6 +294,8 @@ void safelyShutdownSocket(Socket_t xSocket)
 
     /* Shutdown is complete and the socket can be safely closed. */
     FreeRTOS_closesocket(xSocket);
+
+    // end of critical section
 }
 
 uint8_t isDigit(char c)
@@ -348,6 +362,9 @@ static void prvEchoClientRxTask(void *pvParameters)
     error before closing the socket). */
     safelyShutdownSocket(xSocket);
 
+    /* reset serial function in GRBL */
+    serial_init();
+
     /* Must not drop off the end of the RTOS task - delete the RTOS task. */
     vTaskDelete(NULL);
 }
@@ -406,6 +423,9 @@ static void prvSerialTask(void *pvParameters)
      * Ensure the socket has shut down before leaving the task.
      */
     safelyShutdownSocket(xSocket);
+
+    /* reset serial function in GRBL */
+    serial_init();
 
     // delete the RTOS task
     vTaskDelete(NULL);
