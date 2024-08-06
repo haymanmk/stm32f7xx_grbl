@@ -305,7 +305,7 @@ extern void vLoggingPrintf( const char * pcFormatString,
 /* Include support for TCP hang protection. All sockets in a connecting or
  * disconnecting stage will timeout after a period of non-activity. */
 #define ipconfigTCP_HANG_PROTECTION         ( 1 )
-#define ipconfigTCP_HANG_PROTECTION_TIME    ( 30 )
+#define ipconfigTCP_HANG_PROTECTION_TIME    ( 3 )
 
 /* Include support for TCP keep-alive messages. */
 #define ipconfigTCP_KEEP_ALIVE              ( 1 )

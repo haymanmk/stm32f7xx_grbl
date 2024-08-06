@@ -12,6 +12,9 @@
 #define PULSE_PER_REVOLUTION 2000    // 2000 pulses per revolution
 #define CALCULATE_RPM_PERIOD_MS 1000 // 1 second = 1000 ms
 
+/* prototypes declaration */
+void printHeapStatus(void);
+
 /* Type define */
 typedef struct
 {
@@ -52,8 +55,11 @@ void encoderReadPositionTask(void *pvParameters)
         // print encoder degree
         encoder_degree_t degree;
         encoderReadDegree(&degree);
-        vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
+        // vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
 
+        // print heap status
+        printHeapStatus();
+        
         // Delay for 1 second
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -131,6 +137,20 @@ void encoderReadInstantDegree(encoder_degree_t *degree)
 
     // read degree value
     encoderReadDegree(degree);
+}
+
+// ===> Debugging purpose
+void printHeapStatus(void)
+{
+    // Get the current free heap size
+    size_t freeHeapSize = xPortGetFreeHeapSize();
+    
+    // Get the minimum free heap size ever recorded
+    size_t minEverFreeHeapSize = xPortGetMinimumEverFreeHeapSize();
+    
+    // Print the heap sizes
+    vLoggingPrintf("Current free heap size: %u bytes\n", (unsigned int)freeHeapSize);
+    vLoggingPrintf("Minimum ever free heap size: %u bytes\n", (unsigned int)minEverFreeHeapSize);
 }
 
 /**

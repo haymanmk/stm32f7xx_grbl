@@ -16,13 +16,15 @@ static void prvSerialTask(void *pvParameters);
 NetworkInterface_t xInterfaces[1];
 struct xNetworkEndPoint xEndPoints[1];
 uint8_t socketShutdownTimeout = 0;
-extern TaskHandle_t xHandleUpdatePulseData;
+TaskHandle_t createServerSocketTaskHandle;
+TaskHandle_t echoClinetRxTaskHandle;
 TaskHandle_t serialTaskHandle;
 static SemaphoreHandle_t connectionCreatedSemaphoreHandle;
+SemaphoreHandle_t deleteTaskSemaphoreHandle;
 
 BaseType_t tcp_server_init()
 {
-    /* Initialize Semaphore handler to protect the critical section of 
+    /* Initialize Semaphore handler to protect the critical section of
        safely shutting down connection */
     connectionCreatedSemaphoreHandle = xSemaphoreCreateBinary();
 
@@ -168,7 +170,7 @@ static uint16_t usUsedStackSize = 0;
 
 void vStartSimpleTCPServerTasks(uint16_t usStackSize, UBaseType_t uxPriority)
 {
-    xTaskCreate(prvCreateTCPServerSocketTasks, "TCPServerListener", usStackSize, NULL, uxPriority, NULL);
+    xTaskCreate(prvCreateTCPServerSocketTasks, "TCPServerListener", usStackSize, NULL, uxPriority, &createServerSocketTaskHandle);
 
     /* Remember the requested stack size so it can be re-used by the server
      * listening task when it creates tasks to handle connections. */
@@ -222,28 +224,63 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
 
     for (;;)
     {
-        /* Wait for incoming connections. */
-        xConnectedSocket = FreeRTOS_accept(xListeningSocket, &xClient, &xSize);
-        configASSERT(xConnectedSocket != FREERTOS_INVALID_SOCKET);
+        if (xSocketValid(xListeningSocket) == pdTRUE)
+        {
+            /* Wait for incoming connections. */
+            xConnectedSocket = FreeRTOS_accept(xListeningSocket, &xClient, &xSize);
+            configASSERT(xConnectedSocket != FREERTOS_INVALID_SOCKET);
 
-        /* Give semaphore a count to represent there is a connection that can be shut down. */
-        xSemaphoreGive(connectionCreatedSemaphoreHandle);
+            /* Give semaphore a count to represent there is a connection that can be shut down. */
+            xSemaphoreGive(connectionCreatedSemaphoreHandle);
 
-        /* Spawn a RTOS task to handle the connection. */
-        xTaskCreate(prvEchoClientRxTask,
-                    "EchoServer",
-                    usUsedStackSize,
-                    (void *)xConnectedSocket,
-                    tskIDLE_PRIORITY + 1,
-                    NULL);
+            /* Spawn a RTOS task to handle the connection. */
+            xTaskCreate(prvEchoClientRxTask,
+                        "EchoServer",
+                        usUsedStackSize,
+                        (void *)xConnectedSocket,
+                        tskIDLE_PRIORITY + 1,
+                        &echoClinetRxTaskHandle);
 
-        // Create the serial task which is an interface between the serial port and the ethernet
-        xTaskCreate(prvSerialTask,
-                    "SerialTask",
-                    configMINIMAL_STACK_SIZE * 2,
-                    (void *)xConnectedSocket,
-                    tskIDLE_PRIORITY + 1,
-                    &serialTaskHandle);
+            // Create the serial task which is an interface between the serial port and the ethernet
+            xTaskCreate(prvSerialTask,
+                        "SerialTask",
+                        configMINIMAL_STACK_SIZE * 2,
+                        (void *)xConnectedSocket,
+                        tskIDLE_PRIORITY + 1,
+                        &serialTaskHandle);
+
+            // wait here until the connection is closed
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+            // check if the task handle is valid
+            if (echoClinetRxTaskHandle != NULL)
+            {
+                // delete the task
+                vTaskDelete(echoClinetRxTaskHandle);
+                echoClinetRxTaskHandle = NULL;
+            }
+            if (serialTaskHandle != NULL)
+            {
+                // delete the task
+                vTaskDelete(serialTaskHandle);
+                serialTaskHandle = NULL;
+            }
+
+            // create binary semaphore to wait for idle task to delete the task
+            deleteTaskSemaphoreHandle = xSemaphoreCreateBinary();
+
+            if (deleteTaskSemaphoreHandle != NULL)
+            {
+                // wait for idle task to delete the task and free the memory
+                xSemaphoreTake(deleteTaskSemaphoreHandle, portMAX_DELAY);
+                // delete semaphore
+                vSemaphoreDelete(deleteTaskSemaphoreHandle);
+                deleteTaskSemaphoreHandle = NULL;
+            }
+
+            // clear notify value in case there is any task giving notification during the wait
+            ulTaskNotifyValueClear(NULL, 0xffffffff);
+        }
     }
 }
 
@@ -255,8 +292,10 @@ void vTimeoutCallback(TimerHandle_t xTimer)
 void safelyShutdownSocket(Socket_t xSocket)
 {
     // beginning of critical section
-    if (xSemaphoreTake(connectionCreatedSemaphoreHandle, pdMS_TO_TICKS(500)) == pdFALSE) return;
+    if (xSemaphoreTake(connectionCreatedSemaphoreHandle, pdMS_TO_TICKS(500)) == pdFALSE)
+        return;
 
+    vLoggingPrintf("Shutting down socket\n");
     // shutdown the socket
     FreeRTOS_shutdown(xSocket, FREERTOS_SHUT_RDWR);
 
@@ -291,9 +330,18 @@ void safelyShutdownSocket(Socket_t xSocket)
     {
         FreeRTOS_debug_printf(("Failed to reset timer\n"));
     }
+    
+    // delete timer
+    if (xTimerDelete(xTimer, 0) != pdPASS)
+    {
+        FreeRTOS_debug_printf(("Failed to delete timer\n"));
+    }
 
     /* Shutdown is complete and the socket can be safely closed. */
     FreeRTOS_closesocket(xSocket);
+    xSocket = NULL;
+
+    vLoggingPrintf("Socket shutdown complete\n");
 
     // end of critical section
 }
@@ -306,9 +354,6 @@ uint8_t isDigit(char c)
 void prvProcessData(char *cRxedData, BaseType_t lBytesReceived, Socket_t xConnectedSocket)
 {
     FreeRTOS_debug_printf(("Received data: %s\n", cRxedData));
-
-    // if (cRxedData[0] != '$')
-    //     return;
 
     BaseType_t i = 0;
 
@@ -360,19 +405,27 @@ static void prvEchoClientRxTask(void *pvParameters)
     /* The RTOS task will get here if an error is received on a read.  Ensure the
     socket has shut down (indicated by FreeRTOS_recv() returning a -pdFREERTOS_ERRNO_EINVAL
     error before closing the socket). */
-    safelyShutdownSocket(xSocket);
+    if (xSocket)
+        safelyShutdownSocket(xSocket);
 
     /* reset serial function in GRBL */
     serial_init();
 
+    // clear task handle
+    echoClinetRxTaskHandle = NULL;
+
+    // notify server socket task to delete the task
+    xTaskNotifyGive(createServerSocketTaskHandle);
+
     /* Must not drop off the end of the RTOS task - delete the RTOS task. */
+    // delete current task
     vTaskDelete(NULL);
 }
 
 static void prvSerialTask(void *pvParameters)
 {
     Socket_t xSocket = (Socket_t)pvParameters;
-    char str[64] = {'\0'};
+    char str[80] = {'\0'};
     uint8_t strIndex = 0;
 
     for (;;)
@@ -389,7 +442,12 @@ static void prvSerialTask(void *pvParameters)
 
         // concatenate the data to be sent until a newline character, '\n', is received
         str[strIndex] = chr;
-        strIndex++;
+
+        if (++strIndex >= sizeof(str))
+        {
+            FreeRTOS_debug_printf(("Buffer overflow\n"));
+            strIndex = 0;
+        }
 
         // Check if the character is a newline character
         if (chr != '\n')
@@ -398,7 +456,7 @@ static void prvSerialTask(void *pvParameters)
         }
 
         // Send the data
-        BaseType_t bytesSent = FreeRTOS_send(xSocket, str, sizeof(str), 0);
+        BaseType_t bytesSent = FreeRTOS_send(xSocket, str, strIndex, 0);
 
         // Clear the string buffer
         memset(str, '\0', sizeof(str));
@@ -422,12 +480,19 @@ static void prvSerialTask(void *pvParameters)
      * The RTOS task will get here if an error is received on a read.
      * Ensure the socket has shut down before leaving the task.
      */
-    safelyShutdownSocket(xSocket);
+    if (xSocket)
+        safelyShutdownSocket(xSocket);
 
     /* reset serial function in GRBL */
     serial_init();
 
-    // delete the RTOS task
+    // clear task handle
+    serialTaskHandle = NULL;
+
+    // notify server socket task to delete the task
+    xTaskNotifyGive(createServerSocketTaskHandle);
+
+    // delete current task
     vTaskDelete(NULL);
 }
 

@@ -62,6 +62,7 @@ DMA_HandleTypeDef hdma_tim5_ch1;
 TaskHandle_t mainGRBLTaskHandle = NULL;
 extern uint8_t stepBlockedAxes;
 SemaphoreHandle_t loggingSemaphoreHandle;
+extern SemaphoreHandle_t deleteTaskSemaphoreHandle;
 
 /* USER CODE END PV */
 
@@ -818,6 +819,18 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
   taskDISABLE_INTERRUPTS();
   for (;;)
     ;
+}
+
+void vApplicationIdleHook( void )
+{
+  // vLoggingPrintf("Idle Hook\n");
+
+  // check if delete task semaphore is not null
+  if (deleteTaskSemaphoreHandle != NULL)
+  {
+    // give the semaphore to delete the task
+    xSemaphoreGive(deleteTaskSemaphoreHandle);
+  }
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
