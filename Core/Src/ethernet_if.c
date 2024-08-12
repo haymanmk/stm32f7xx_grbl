@@ -331,7 +331,7 @@ void safelyShutdownSocket(Socket_t xSocket)
         FreeRTOS_debug_printf(("Failed to reset timer\n"));
     }
     
-    // delete timer
+    // delete timer; note: this step is important to avoid memory leak
     if (xTimerDelete(xTimer, 0) != pdPASS)
     {
         FreeRTOS_debug_printf(("Failed to delete timer\n"));
