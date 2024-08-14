@@ -845,7 +845,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #ifdef INVERT_LIMIT_PIN_MASK
     pinState ^= INVERT_LIMIT_PIN_MASK;
 #endif
-    if (pinState & GPIO_Pin && !(stepBlockedAxes & (1 << GET_AXIS_FROM_GPIO_PIN(GPIO_Pin))))
+    if ((pinState & GPIO_Pin) && !(stepBlockedAxes & (1 << GET_AXIS_FROM_GPIO_PIN(GPIO_Pin))))
       limits_isr(GPIO_Pin);
   }
   else if ((GPIO_Pin & CONTROL_MASK) != 0)

@@ -554,6 +554,19 @@ void stepper_pulse_generation_isr()
     else
     {
       sys_position[X_AXIS]++;
+#if defined(STM32F7XX_ARCH)
+      // check if homing cycle is active
+      if (sys.state != STATE_HOMING)
+      {
+        // check if limits has been hit
+        if (limits_get_state() & (1 << X_AXIS))
+        {
+          // check moving axis and direction, if moving in the direction of the limit switch, then stop
+          mc_reset();                                   // Initiate system kill.
+          system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
+        }
+      }
+#endif
     }
   }
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
@@ -575,6 +588,19 @@ void stepper_pulse_generation_isr()
     else
     {
       sys_position[Y_AXIS]++;
+#if defined(STM32F7XX_ARCH)
+      // check if homing cycle is active
+      if (sys.state != STATE_HOMING)
+      {
+        // check if limits has been hit
+        if (limits_get_state() & (1 << Y_AXIS))
+        {
+          // check moving axis and direction, if moving in the direction of the limit switch, then stop
+          mc_reset();                                   // Initiate system kill.
+          system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
+        }
+      }
+#endif
     }
   }
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
@@ -593,6 +619,19 @@ void stepper_pulse_generation_isr()
     else
     {
       sys_position[Z_AXIS]++;
+#if defined(STM32F7XX_ARCH)
+      // check if homing cycle is active
+      if (sys.state != STATE_HOMING)
+      {
+        // check if limits has been hit
+        if (limits_get_state() & (1 << Z_AXIS))
+        {
+          // check moving axis and direction, if moving in the direction of the limit switch, then stop
+          mc_reset();                                   // Initiate system kill.
+          system_set_exec_alarm(EXEC_ALARM_HARD_LIMIT); // Indicate hard limit critical event
+        }
+      }
+#endif
     }
   }
 
@@ -1307,12 +1346,12 @@ void st_prep_buffer()
     float inv_rate = dt / (last_n_steps_remaining - step_dist_remaining); // Compute adjusted step rate inverse
 
     // Compute CPU cycles per step for the prepped segment.
-  #if defined(AVR_ARCH)
+#if defined(AVR_ARCH)
     uint32_t cycles = ceil(((uint32_t)TICKS_PER_MICROSECOND * 1000000 * 60) * inv_rate); // (cycles/step)
-  #elif defined(STM32F7XX_ARCH)
+#elif defined(STM32F7XX_ARCH)
     float inv_rate_1000000 = inv_rate * 1000000;
     uint32_t cycles = ceil((uint32_t)TICKS_PER_MICROSECOND * 60 * inv_rate_1000000); // (cycles/step)
-  #endif
+#endif
 
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
     // Compute step timing and multi-axis smoothing level.
@@ -1359,7 +1398,7 @@ void st_prep_buffer()
 #endif
     } // Just set the slowest speed possible.
 #else
-                                                                                         // Compute step timing and timer prescalar for normal step generation.
+                                                                                     // Compute step timing and timer prescalar for normal step generation.
     if (cycles < (1UL << 16))
     {                              // < 65536  (4.1ms @ 16MHz)
       prep_segment->prescaler = 1; // prescaler: 0

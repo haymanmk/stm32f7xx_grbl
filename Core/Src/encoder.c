@@ -58,7 +58,7 @@ void encoderReadPositionTask(void *pvParameters)
         // vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
 
         // print heap status
-        printHeapStatus();
+        // printHeapStatus();
         
         // Delay for 1 second
         vTaskDelay(pdMS_TO_TICKS(1000));

@@ -297,7 +297,7 @@
   // NOTE: All limit bit pins must be on the same port, but not on a port with other input pins (CONTROL).
   #define LIMIT_GPIO_GROUP GPIOE
   #define LIMIT_PIN        LIMIT_GPIO_GROUP->IDR
-  #define X_LIMIT_BIT      0  // PE10 EXTI0
+  #define X_LIMIT_BIT      0  // PE0 EXTI0
   #define Y_LIMIT_BIT      10  // PE10 EXTI15_10
   #define Z_LIMIT_BIT      2  // PE2 EXTI2
   #define LIMIT_MASK     ((1<<X_LIMIT_BIT)|(1<<Y_LIMIT_BIT)|(1<<Z_LIMIT_BIT)) // All limit bits

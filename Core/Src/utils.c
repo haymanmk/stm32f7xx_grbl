@@ -9,7 +9,7 @@ extern TaskHandle_t mainGRBLTaskHandle;
 TIM_HandleTypeDef *htimUs; // Timer for microsecond delay
 TimerHandle_t debouncingTimerHandle_LimitSwitch[NUM_DIMENSIONS];
 uint16_t LimitSwitch_Pin[NUM_DIMENSIONS] = {X_LIMIT_Pin, Y_LIMIT_Pin, Z_LIMIT_Pin};
-uint32_t usDelay = 0;
+volatile uint32_t usDelay = 0;
 
 void debouncingTimerCallback_LimitSwitch(TimerHandle_t xTimer)
 {
@@ -49,39 +49,39 @@ void utilsStartUsTimer(TIM_HandleTypeDef *htim)
 
 void utilsDebounceLimitSwitches(uint16_t GPIO_Pin)
 {
-  if (GPIO_Pin & (1 << X_LIMIT_BIT))
-  {
-    // disable IRQ
-    HAL_NVIC_DisableIRQ(X_LIMIT_EXTI_IRQn);
+    if (GPIO_Pin & (1 << X_LIMIT_BIT))
+    {
+        // disable IRQ
+        HAL_NVIC_DisableIRQ(X_LIMIT_EXTI_IRQn);
 
-    // start timer
-    xTimerStartFromISR(debouncingTimerHandle_LimitSwitch[X_AXIS], 0);
+        // start timer
+        xTimerStartFromISR(debouncingTimerHandle_LimitSwitch[X_AXIS], 0);
 
-    // enable IRQ
-    HAL_NVIC_EnableIRQ(X_LIMIT_EXTI_IRQn);
-  }
-  else if (GPIO_Pin & (1 << Y_LIMIT_BIT))
-  {
-    // disable IRQ
-    HAL_NVIC_DisableIRQ(Y_LIMIT_EXTI_IRQn);
+        // enable IRQ
+        HAL_NVIC_EnableIRQ(X_LIMIT_EXTI_IRQn);
+    }
+    else if (GPIO_Pin & (1 << Y_LIMIT_BIT))
+    {
+        // disable IRQ
+        HAL_NVIC_DisableIRQ(Y_LIMIT_EXTI_IRQn);
 
-    // start timer
-    xTimerStartFromISR(debouncingTimerHandle_LimitSwitch[Y_AXIS], 0);
+        // start timer
+        xTimerStartFromISR(debouncingTimerHandle_LimitSwitch[Y_AXIS], 0);
 
-    // enable IRQ
-    HAL_NVIC_EnableIRQ(Y_LIMIT_EXTI_IRQn);
-  }
-  else if (GPIO_Pin & (1 << Z_LIMIT_BIT))
-  {
-    // disable IRQ
-    HAL_NVIC_DisableIRQ(Z_LIMIT_EXTI_IRQn);
+        // enable IRQ
+        HAL_NVIC_EnableIRQ(Y_LIMIT_EXTI_IRQn);
+    }
+    else if (GPIO_Pin & (1 << Z_LIMIT_BIT))
+    {
+        // disable IRQ
+        HAL_NVIC_DisableIRQ(Z_LIMIT_EXTI_IRQn);
 
-    // start timer
-    xTimerStartFromISR(debouncingTimerHandle_LimitSwitch[Z_AXIS], 0);
+        // start timer
+        xTimerStartFromISR(debouncingTimerHandle_LimitSwitch[Z_AXIS], 0);
 
-    // enable IRQ
-    HAL_NVIC_EnableIRQ(Z_LIMIT_EXTI_IRQn);
-  }
+        // enable IRQ
+        HAL_NVIC_EnableIRQ(Z_LIMIT_EXTI_IRQn);
+    }
 }
 
 void utilsDelayMs(uint16_t ms)
@@ -94,24 +94,28 @@ void utilsDelayMs(uint16_t ms)
  */
 void utilsDelayUs(uint32_t us)
 {
+    // vLoggingPrintf("utilsDelayUs: %d\n", us);
+
     // reset timer counter
     __HAL_TIM_SET_COUNTER(htimUs, 0);
 
-    HAL_TIM_Base_Start_IT(htimUs);
     usDelay = us;
+    HAL_TIM_Base_Start_IT(htimUs);
 
     // wait for timer to expire
     while (usDelay)
         ;
+
+    // vLoggingPrintf("leave utilsDelayUs\n");
 }
 
 void utilsUsTimerInterruptHandler()
 {
-    if (--usDelay)
+    if (usDelay == 0)
+        // stop timer
+        HAL_TIM_Base_Stop_IT(htimUs);
+    else if (--usDelay)
         return;
-
-    // stop timer
-    HAL_TIM_Base_Stop_IT(htimUs);
 }
 
 // debouncing

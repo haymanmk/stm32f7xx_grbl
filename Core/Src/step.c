@@ -136,7 +136,7 @@ volatile uint16_t pulseRingBufferTail = 0;
 static TIM_DMA_Parameters_t axisTimerDMAParams[NUM_DIMENSIONS];
 
 // declare an array of general notification
-volatile uint32_t generalNotification;
+volatile uint32_t generalNotification = (GENERAL_NOTIFICATION_GET_NEW_BUFFER | GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
 
 // current steppers state, which can be used to determine if a stepper shall be re-enabled from idle.
 volatile uint8_t currentStepperState = 0; // bit 0: x axis active, bit 1: y axis active, bit 2: z axis active
@@ -303,13 +303,16 @@ void stepTask(void *pvParameters)
                 // clear motion control state
                 pulseRingBuffer[pulseRingBufferHead].motion_control_state = 0;
 
+                vLoggingPrintf("Get new buffer\n");
                 // inform to get new free buffer
                 generalNotification |= GENERAL_NOTIFICATION_GET_NEW_BUFFER;
             }
             else
             {
+                vLoggingPrintf("No data available\n");
                 // wait notification to calculate pulse data
                 ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+                vLoggingPrintf("Calculate pulse data\n");
             }
         }
 
@@ -991,7 +994,8 @@ void stepBlockAxis(uint8_t axis)
 
 uint8_t stepIsPulseDataExhausted()
 {
-    return (generalNotification & GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES);
+    return ((generalNotification & GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES) > 0);
+    // return (pulseRingBufferHead == pulseRingBufferTail);
 }
 
 /* ===================================================================== */
