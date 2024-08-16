@@ -353,7 +353,7 @@ uint8_t isDigit(char c)
 
 void prvProcessData(char *cRxedData, BaseType_t lBytesReceived, Socket_t xConnectedSocket)
 {
-    FreeRTOS_debug_printf(("Received data: %s\n", cRxedData));
+    FreeRTOS_debug_printf(("Received data: %.*s\n", lBytesReceived, cRxedData));
 
     BaseType_t i = 0;
 
@@ -458,12 +458,6 @@ static void prvSerialTask(void *pvParameters)
         // Send the data
         BaseType_t bytesSent = FreeRTOS_send(xSocket, str, strIndex, 0);
 
-        // Clear the string buffer
-        memset(str, '\0', sizeof(str));
-
-        // Reset the string index
-        strIndex = 0;
-
         // Check if the data was sent successfully
         if (bytesSent > 0)
         {
@@ -474,6 +468,12 @@ static void prvSerialTask(void *pvParameters)
             FreeRTOS_debug_printf(("Failed to send data\n"));
             break;
         }
+
+        // Clear the string buffer
+        memset(str, '\0', sizeof(str));
+
+        // Reset the string index
+        strIndex = 0;
     }
 
     /**

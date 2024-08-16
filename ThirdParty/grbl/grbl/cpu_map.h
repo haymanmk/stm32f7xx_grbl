@@ -363,6 +363,13 @@
     #define SPINDLE_PWM_BIT   // Uno Digital Pin 11
   #endif // ENABLE_DUAL_AXIS
 
+  #define USER_OUTPUT_GPIO_GROUP  GPIOF
+  #define USER_OUTPUT_PORT        USER_OUTPUT_GPIO_GROUP->ODR
+  #define USER_OUTPUT_0_BIT       0  // PF0
+  #define USER_OUTPUT_1_BIT       1  // PF1
+  #define USER_OUTPUT_2_BIT       2  // PF2
+  #define USER_OUTPUT_3_BIT       3  // PF3
+
 #endif // CPU_MAP_STM32F7XX
 
 #endif

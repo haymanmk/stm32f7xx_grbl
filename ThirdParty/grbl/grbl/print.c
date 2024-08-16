@@ -115,6 +115,33 @@ void print_uint32_base10(uint32_t n)
     serial_write('0' + buf[i-1]);
 }
 
+#ifdef STM32F7XX_ARCH
+// print uint32_t in base 16
+void print_uint32_base16(uint32_t n)
+{
+  if (n == 0) {
+    serial_write('0');
+    return;
+  }
+
+  unsigned char buf[8];
+  uint8_t i = 0;
+
+  while (n > 0) {
+    buf[i++] = n % 16;
+    n /= 16;
+  }
+
+  for (; i > 0; i--) {
+    if (buf[i-1] < 10) {
+      serial_write('0' + buf[i-1]);
+    } else {
+      serial_write('A' + buf[i-1] - 10);
+    }
+  }
+}
+#endif // STM32F7XX_ARCH
+
 
 void printInteger(long n)
 {

@@ -80,6 +80,14 @@ void Error_Handler(void);
 #define USER_Btn_Pin GPIO_PIN_13
 #define USER_Btn_GPIO_Port GPIOC
 #define USER_Btn_EXTI_IRQn EXTI15_10_IRQn
+#define USER_OUTPUT_0_Pin GPIO_PIN_0
+#define USER_OUTPUT_0_GPIO_Port GPIOF
+#define USER_OUTPUT_1_Pin GPIO_PIN_1
+#define USER_OUTPUT_1_GPIO_Port GPIOF
+#define USER_OUTPUT_2_Pin GPIO_PIN_2
+#define USER_OUTPUT_2_GPIO_Port GPIOF
+#define USER_OUTPUT_3_Pin GPIO_PIN_3
+#define USER_OUTPUT_3_GPIO_Port GPIOF
 #define STEP_DISABLE_Pin GPIO_PIN_6
 #define STEP_DISABLE_GPIO_Port GPIOF
 #define COOLANT_Pin GPIO_PIN_7

@@ -474,3 +474,18 @@ void system_clear_exec_accessory_overrides() {
   __enable_irq();
 #endif
 }
+
+#if defined(STM32F7XX_ARCH)
+// Special handlers for setting and clearing Grbl's real-time execution flags.
+void system_set_exec_user_defined_flag(uint8_t mask) {
+  __disable_irq();
+  sys_rt_exec_user_defined |= (mask);
+  __enable_irq();
+}
+
+void system_clear_exec_user_defined_flag(uint8_t mask) {
+  __disable_irq();
+  sys_rt_exec_user_defined &= ~(mask);
+  __enable_irq();
+}
+#endif

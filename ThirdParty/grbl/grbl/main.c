@@ -31,6 +31,9 @@ volatile uint8_t sys_rt_exec_state;   // Global realtime executor bitflag variab
 volatile uint8_t sys_rt_exec_alarm;   // Global realtime executor bitflag variable for setting various alarms.
 volatile uint8_t sys_rt_exec_motion_override; // Global realtime executor bitflag variable for motion-based overrides.
 volatile uint8_t sys_rt_exec_accessory_override; // Global realtime executor bitflag variable for spindle/coolant overrides.
+#if defined(STM32F7XX_ARCH)
+  volatile uint8_t sys_rt_exec_user_defined; // Global realtime executor bitflag variable for user-defined features.
+#endif
 #ifdef DEBUG
   volatile uint8_t sys_rt_exec_debug;
 #endif
@@ -95,6 +98,9 @@ volatile uint8_t sys_rt_exec_accessory_override; // Global realtime executor bit
     sys_rt_exec_alarm = 0;
     sys_rt_exec_motion_override = 0;
     sys_rt_exec_accessory_override = 0;
+  #if defined(STM32F7XX_ARCH)
+    sys_rt_exec_user_defined = 0;
+  #endif
 
     // Reset Grbl primary systems.
     serial_reset_read_buffer(); // Clear serial read buffer

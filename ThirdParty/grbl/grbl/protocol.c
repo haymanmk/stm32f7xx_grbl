@@ -531,6 +531,7 @@ void protocol_exec_rt_system()
       }
       system_clear_exec_state_flag(EXEC_CYCLE_STOP);
     }
+
   }
 
   // Execute overrides.
@@ -696,6 +697,17 @@ void protocol_exec_rt_system()
     }
   }
 
+#if defined(STM32F7XX_ARCH)
+  rt_exec = sys_rt_exec_user_defined;
+  if (rt_exec) {
+    // Execute and serial print status
+    if (rt_exec & EXEC_IO_STATUS_REPORT)
+    {
+      report_io_status();
+      system_clear_exec_user_defined_flag(EXEC_IO_STATUS_REPORT);
+    }
+  }
+#endif
 #ifdef DEBUG
   if (sys_rt_exec_debug)
   {

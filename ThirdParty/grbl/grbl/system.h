@@ -70,6 +70,11 @@
 #define EXEC_COOLANT_FLOOD_OVR_TOGGLE  bit(6)
 #define EXEC_COOLANT_MIST_OVR_TOGGLE   bit(7)
 
+#if defined(STM32F7XX_ARCH)
+  // User defined bit maps. Realtime bitflags to control user-defined features.
+  #define EXEC_READ_IO_STATUS  bit(0)
+#endif
+
 // Define system state bit map. The state variable primarily tracks the individual functions
 // of Grbl to manage each without overlapping. It is also used as a messaging flag for
 // critical events.
@@ -159,6 +164,7 @@ extern volatile uint8_t sys_rt_exec_state;   // Global realtime executor bitflag
 extern volatile uint8_t sys_rt_exec_alarm;   // Global realtime executor bitflag variable for setting various alarms.
 extern volatile uint8_t sys_rt_exec_motion_override; // Global realtime executor bitflag variable for motion-based overrides.
 extern volatile uint8_t sys_rt_exec_accessory_override; // Global realtime executor bitflag variable for spindle/coolant overrides.
+extern volatile uint8_t sys_rt_exec_user_defined; // Global realtime executor bitflag variable for user-defined features.
 
 #ifdef DEBUG
   #define EXEC_DEBUG_REPORT  bit(0)
@@ -209,7 +215,12 @@ void system_clear_exec_motion_overrides();
 void system_clear_exec_accessory_overrides();
 
 #if defined(STM32F7XX_ARCH)
+  // User defined bit maps. Realtime bitflags to control user-defined features.
+  #define EXEC_IO_STATUS_REPORT  bit(0)
+
   void system_control_pin_isr(uint16_t GPIO_Pin);
+  void system_set_exec_user_defined_flag(uint8_t mask);
+  void system_clear_exec_user_defined_flag(uint8_t mask);
 #endif
 
 #endif
