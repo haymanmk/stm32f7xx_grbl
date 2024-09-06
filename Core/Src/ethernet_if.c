@@ -17,7 +17,7 @@ NetworkInterface_t xInterfaces[1];
 struct xNetworkEndPoint xEndPoints[1];
 uint8_t socketShutdownTimeout = 0;
 TaskHandle_t createServerSocketTaskHandle;
-TaskHandle_t echoClinetRxTaskHandle;
+TaskHandle_t echoClientRxTaskHandle;
 TaskHandle_t serialTaskHandle;
 static SemaphoreHandle_t connectionCreatedSemaphoreHandle;
 SemaphoreHandle_t deleteTaskSemaphoreHandle;
@@ -239,7 +239,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
                         usUsedStackSize,
                         (void *)xConnectedSocket,
                         tskIDLE_PRIORITY + 1,
-                        &echoClinetRxTaskHandle);
+                        &echoClientRxTaskHandle);
 
             // Create the serial task which is an interface between the serial port and the ethernet
             xTaskCreate(prvSerialTask,
@@ -253,11 +253,11 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
             // check if the task handle is valid
-            if (echoClinetRxTaskHandle != NULL)
+            if (echoClientRxTaskHandle != NULL)
             {
                 // delete the task
-                vTaskDelete(echoClinetRxTaskHandle);
-                echoClinetRxTaskHandle = NULL;
+                vTaskDelete(echoClientRxTaskHandle);
+                echoClientRxTaskHandle = NULL;
             }
             if (serialTaskHandle != NULL)
             {
@@ -330,7 +330,7 @@ void safelyShutdownSocket(Socket_t xSocket)
     {
         FreeRTOS_debug_printf(("Failed to reset timer\n"));
     }
-    
+
     // delete timer; note: this step is important to avoid memory leak
     if (xTimerDelete(xTimer, 0) != pdPASS)
     {
@@ -412,7 +412,7 @@ static void prvEchoClientRxTask(void *pvParameters)
     serial_init();
 
     // clear task handle
-    echoClinetRxTaskHandle = NULL;
+    echoClientRxTaskHandle = NULL;
 
     // notify server socket task to delete the task
     xTaskNotifyGive(createServerSocketTaskHandle);
