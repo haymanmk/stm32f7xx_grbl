@@ -83,8 +83,12 @@ uint8_t system_control_get_state()
 {
   uint8_t pin = system_control_get_state();
   if (pin) {
+    // For the STM32F7XX_ARCH, the RESET pin is connected to the EMG stop button
     if (bit_istrue(pin,CONTROL_PIN_INDEX_RESET)) {
       mc_reset();
+    #ifdef STM32F7XX_ARCH
+      system_set_exec_alarm(EXEC_ALARM_EMG_STOP); // Indicate hard limit critical event
+    #endif
     }
     if (bit_istrue(pin,CONTROL_PIN_INDEX_CYCLE_START)) {
       bit_true(sys_rt_exec_state, EXEC_CYCLE_START);

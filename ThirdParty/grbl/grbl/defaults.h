@@ -63,6 +63,13 @@
   #define DEFAULT_HOMING_SEEK_RATE 500.0 // mm/min
   #define DEFAULT_HOMING_DEBOUNCE_DELAY 250 // msec (0-65k)
   #define DEFAULT_HOMING_PULLOFF 1.0 // mm
+  #ifdef STM32F7XX_ARCH
+    #define DEFAULT_IP_ADDRESS_0 172
+    #define DEFAULT_IP_ADDRESS_1 16
+    #define DEFAULT_IP_ADDRESS_2 0
+    #define DEFAULT_IP_ADDRESS_3 10
+    #define DEFAULT_TCP_PORT 00 // 0-15, i.e. 8500-8500+15
+  #endif
 #endif
 
 #ifdef DEFAULTS_SHERLINE_5400

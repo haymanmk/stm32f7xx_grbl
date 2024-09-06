@@ -129,6 +129,14 @@ static void report_util_uint8_setting(uint8_t n, int val)
   print_uint8_base10(val);
   report_util_line_feed(); // report_util_setting_string(n);
 }
+#ifdef STM32F7XX_ARCH
+static void report_util_uint16_setting(uint8_t n, uint16_t val)
+{
+  report_util_setting_prefix(n);
+  print_uint16_base10(val);
+  report_util_line_feed(); // report_util_setting_string(n);
+}
+#endif // STM32F7XX_ARCH
 static void report_util_float_setting(uint8_t n, float val, uint8_t n_decimal)
 {
   report_util_setting_prefix(n);
@@ -255,6 +263,13 @@ void report_grbl_settings()
 #else
   report_util_uint8_setting(32, 0);
 #endif
+#ifdef STM32F7XX_ARCH
+  report_util_uint8_setting(33, settings.ip_address_0);
+  report_util_uint8_setting(34, settings.ip_address_1);
+  report_util_uint8_setting(35, settings.ip_address_2);
+  report_util_uint8_setting(36, settings.ip_address_3);
+  report_util_uint8_setting(37, settings.tcp_port);
+#endif // STM32F7XX_ARCH
   // Print axis settings
   uint8_t idx, set_idx;
   uint8_t val = AXIS_SETTINGS_START_VAL;
@@ -612,7 +627,7 @@ void report_realtime_status()
   case STATE_ALARM:
     printPgmString(PSTR("Alarm"));
     if (sys_rt_exec_alarm)
-      serial_write(sys_rt_exec_alarm + '0');
+      print_uint8_base10(sys_rt_exec_alarm);
     break;
 #endif
   case STATE_CHECK_MODE:

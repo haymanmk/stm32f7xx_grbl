@@ -120,6 +120,14 @@ typedef struct {
 
   uint8_t flags;  // Contains default boolean settings
 
+#ifdef STM32F7XX_ARCH
+  uint8_t ip_address_0;
+  uint8_t ip_address_1;
+  uint8_t ip_address_2;
+  uint8_t ip_address_3;
+  uint8_t tcp_port;
+#endif // STM32F7XX_ARCH
+
   uint8_t homing_dir_mask;
   float homing_feed_rate;
   float homing_seek_rate;

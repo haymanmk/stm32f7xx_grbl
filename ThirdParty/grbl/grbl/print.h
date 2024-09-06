@@ -49,6 +49,7 @@ void printFloat_RateValue(float n);
 void printFreeMemory();
 
 #ifdef STM32F7XX_ARCH
+void print_uint16_base10(uint16_t n);
 void print_uint32_base16(uint32_t n);
 #endif
 

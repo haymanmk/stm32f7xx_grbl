@@ -48,6 +48,9 @@
 #define EXEC_ALARM_HOMING_FAIL_PULLOFF        8
 #define EXEC_ALARM_HOMING_FAIL_APPROACH       9
 #define EXEC_ALARM_HOMING_FAIL_DUAL_APPROACH  10
+#ifdef STM32F7XX_ARCH
+  #define EXEC_ALARM_EMG_STOP                 11
+#endif
 
 // Override bit maps. Realtime bitflags to control feed, rapid, spindle, and coolant overrides.
 // Spindle/coolant and feed/rapids are separated into two controlling flag variables.

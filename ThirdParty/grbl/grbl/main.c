@@ -54,6 +54,11 @@ void mainGRBL(void *pvParameters)
   stepper_init();  // Configure stepper pins and interrupt timers
   system_init();   // Configure pinout pins and pin-change interrupt
 
+#ifdef STM32F7XX_ARCH
+  // init TCP
+  tcp_server_init();
+#endif // STM32F7XX_ARCH
+
   memset(sys_position, 0, sizeof(sys_position)); // Clear machine position.
 
 #if defined(AVR_ARCH)

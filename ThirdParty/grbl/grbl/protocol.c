@@ -27,6 +27,9 @@
 #define LINE_FLAG_COMMENT_SEMICOLON bit(2)
 
 static char line[LINE_BUFFER_SIZE]; // Line to be executed. Zero-terminated.
+#ifdef STM32F7XX_ARCH
+extern WWDG_HandleTypeDef hwwdg;
+#endif
 
 static void protocol_exec_rt_suspend();
 
@@ -289,6 +292,7 @@ void protocol_exec_rt_system()
 
 #if defined(STM32F7XX_ARCH)
         // Execute and serial print status
+        rt_exec = sys_rt_exec_state; // Copy volatile sys_rt_exec_alarm.
         if (rt_exec & EXEC_STATUS_REPORT)
         {
           report_realtime_status();
@@ -296,6 +300,30 @@ void protocol_exec_rt_system()
         }
 #endif
       } while (bit_isfalse(sys_rt_exec_state, EXEC_RESET));
+    }
+    else if (rt_exec == EXEC_ALARM_EMG_STOP)
+    {
+      // delay to debounce the EMG stop button
+      HAL_Delay(100);
+      // start WWDG
+      startWWDG();
+      // wait here until the EMG stop is released
+      do
+      {
+        // reset watch dog
+        HAL_WWDG_Refresh(&hwwdg);
+        // Execute and serial print status
+        uint8_t rt_exec = sys_rt_exec_state; // Copy volatile sys_rt_exec_alarm.
+        if (rt_exec & EXEC_STATUS_REPORT)
+        {
+          report_realtime_status();
+          system_clear_exec_state_flag(EXEC_STATUS_REPORT);
+        }
+      } while (bit_istrue(system_control_get_state(), CONTROL_PIN_INDEX_RESET));
+
+      // wait for reset
+      while (1)
+        ;
     }
     system_clear_exec_alarm(); // Clear alarm
   }
@@ -531,7 +559,6 @@ void protocol_exec_rt_system()
       }
       system_clear_exec_state_flag(EXEC_CYCLE_STOP);
     }
-
   }
 
   // Execute overrides.
@@ -699,7 +726,8 @@ void protocol_exec_rt_system()
 
 #if defined(STM32F7XX_ARCH)
   rt_exec = sys_rt_exec_user_defined;
-  if (rt_exec) {
+  if (rt_exec)
+  {
     // Execute and serial print status
     if (rt_exec & EXEC_IO_STATUS_REPORT)
     {

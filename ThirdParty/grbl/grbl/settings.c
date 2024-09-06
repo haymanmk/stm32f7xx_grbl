@@ -52,6 +52,13 @@ const __flash settings_t defaults = {\
              (DEFAULT_SOFT_LIMIT_ENABLE << BIT_SOFT_LIMIT_ENABLE) | \
              (DEFAULT_INVERT_LIMIT_PINS << BIT_INVERT_LIMIT_PINS) | \
              (DEFAULT_INVERT_PROBE_PIN << BIT_INVERT_PROBE_PIN),
+  #ifdef STM32F7XX_ARCH
+    .ip_address_0 = DEFAULT_IP_ADDRESS_0,
+    .ip_address_1 = DEFAULT_IP_ADDRESS_1,
+    .ip_address_2 = DEFAULT_IP_ADDRESS_2,
+    .ip_address_3 = DEFAULT_IP_ADDRESS_3,
+    .tcp_port = DEFAULT_TCP_PORT,
+  #endif // STM32F7XX_ARCH
     .steps_per_mm[X_AXIS] = DEFAULT_X_STEPS_PER_MM,
     .steps_per_mm[Y_AXIS] = DEFAULT_Y_STEPS_PER_MM,
     .steps_per_mm[Z_AXIS] = DEFAULT_Z_STEPS_PER_MM,
@@ -304,6 +311,13 @@ uint8_t settings_store_global_setting(uint8_t parameter, float value) {
           return(STATUS_SETTING_DISABLED_LASER);
         #endif
         break;
+    #ifdef STM32F7XX_ARCH
+      case 33: settings.ip_address_0 = int_value; break;
+      case 34: settings.ip_address_1 = int_value; break;
+      case 35: settings.ip_address_2 = int_value; break;
+      case 36: settings.ip_address_3 = int_value; break;
+      case 37: settings.tcp_port = int_value; break;
+    #endif // STM32F7XX_ARCH
       default:
         return(STATUS_INVALID_STATEMENT);
     }

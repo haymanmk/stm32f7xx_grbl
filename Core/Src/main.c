@@ -24,7 +24,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include "stm32f7xx_grbl.h"
-#include "ethernet_if.h"
 #include "encoder.h"
 #include "grbl.h"
 
@@ -58,11 +57,14 @@ DMA_HandleTypeDef hdma_tim2_up_ch3;
 DMA_HandleTypeDef hdma_tim2_ch2_ch4;
 DMA_HandleTypeDef hdma_tim5_ch1;
 
+WWDG_HandleTypeDef hwwdg;
+
 /* USER CODE BEGIN PV */
 TaskHandle_t mainGRBLTaskHandle = NULL;
 extern uint8_t stepBlockedAxes;
 SemaphoreHandle_t loggingSemaphoreHandle;
 extern SemaphoreHandle_t deleteTaskSemaphoreHandle;
+uint8_t wwdgStartFlag = 0;
 
 /* USER CODE END PV */
 
@@ -77,6 +79,7 @@ static void MX_TIM1_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM7_Init(void);
 static void MX_TIM14_Init(void);
+static void MX_WWDG_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -129,6 +132,7 @@ int main(void)
   MX_TIM5_Init();
   MX_TIM7_Init();
   MX_TIM14_Init();
+  MX_WWDG_Init();
   /* USER CODE BEGIN 2 */
   // start Timer 7
   HAL_TIM_Base_Start_IT(&htim7);
@@ -138,9 +142,6 @@ int main(void)
 
   // start microsecond timer and software timer in FreeRTOS
   utilsStartUsTimer(&htim14);
-
-  // init TCP
-  tcp_server_init();
 
 #ifdef ENCODER_ENABLE
   // init encoder
@@ -322,7 +323,7 @@ static void MX_TIM2_Init(void)
   }
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
@@ -490,7 +491,7 @@ static void MX_TIM5_Init(void)
   }
   sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
   sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_OC_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
@@ -569,6 +570,40 @@ static void MX_TIM14_Init(void)
   /* USER CODE BEGIN TIM14_Init 2 */
 
   /* USER CODE END TIM14_Init 2 */
+
+}
+
+/**
+  * @brief WWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_WWDG_Init(void)
+{
+
+  /* USER CODE BEGIN WWDG_Init 0 */
+  if (wwdgStartFlag == 0)
+  {
+    return;
+  }
+
+  /* USER CODE END WWDG_Init 0 */
+
+  /* USER CODE BEGIN WWDG_Init 1 */
+
+  /* USER CODE END WWDG_Init 1 */
+  hwwdg.Instance = WWDG;
+  hwwdg.Init.Prescaler = WWDG_PRESCALER_8;
+  hwwdg.Init.Window = 127;
+  hwwdg.Init.Counter = 127;
+  hwwdg.Init.EWIMode = WWDG_EWI_DISABLE;
+  if (HAL_WWDG_Init(&hwwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN WWDG_Init 2 */
+
+  /* USER CODE END WWDG_Init 2 */
 
 }
 
@@ -678,12 +713,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : X_DIR_Pin Z_DIR_Pin */
-  GPIO_InitStruct.Pin = X_DIR_Pin|Z_DIR_Pin;
+  /*Configure GPIO pin : X_DIR_Pin */
+  GPIO_InitStruct.Pin = X_DIR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(X_DIR_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Z_DIR_Pin */
+  GPIO_InitStruct.Pin = Z_DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(Z_DIR_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD1_Pin LD3_Pin LD2_Pin */
   GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|LD2_Pin;
@@ -870,7 +912,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #ifdef INVERT_CONTROL_PIN_MASK
     pinState ^= INVERT_CONTROL_PIN_MASK;
 #endif
-    if (pinState & GPIO_Pin)
+    if ((pinState & GPIO_Pin) && !(sys_rt_exec_alarm & EXEC_ALARM_EMG_STOP))
       system_control_pin_isr(GPIO_Pin);
 
     /**
@@ -888,6 +930,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
       probe_state_monitor();
     }
   }
+}
+
+void startWWDG()
+{
+  wwdgStartFlag = 1;
+  MX_WWDG_Init();
 }
 /* USER CODE END 4 */
 
