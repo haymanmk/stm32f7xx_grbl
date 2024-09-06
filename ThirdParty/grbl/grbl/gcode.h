@@ -45,6 +45,9 @@
 #define MODAL_GROUP_M7 12 // [M3,M4,M5] Spindle turning
 #define MODAL_GROUP_M8 13 // [M7,M8,M9] Coolant control
 #define MODAL_GROUP_M9 14 // [M56] Override control
+#if defined(STM32F7XX_ARCH)
+  #define MODAL_GROUP_M62 15 // [M62,M63] Output control
+#endif
 
 // Define command actions for within execution-type modal groups (motion, stopping, non-modal). Used
 // internally by the parser to know which command to execute.
@@ -132,6 +135,12 @@
   #define OVERRIDE_DISABLED  1 // Parking disabled.
 #endif
 
+// Modal Group M62, M63: Output control
+#if defined(STM32F7XX_ARCH)
+  #define OUTPUT_SYNC_OFF 0 // M63
+  #define OUTPUT_SYNC_ON  1 // M62
+#endif
+
 // Modal Group G12: Active work coordinate system
 // N/A: Stores coordinate system value (54-59) to change to.
 
@@ -194,6 +203,9 @@ typedef struct {
   uint8_t coolant;         // {M7,M8,M9}
   uint8_t spindle;         // {M3,M4,M5}
   uint8_t override;        // {M56}
+#if defined(STM32F7XX_ARCH)
+  uint8_t output_sync;     // {M62,M63}
+#endif
 } gc_modal_t;
 
 typedef struct {

@@ -83,6 +83,9 @@
 #define CMD_SPINDLE_OVR_STOP 0x9E
 #define CMD_COOLANT_FLOOD_OVR_TOGGLE 0xA0
 #define CMD_COOLANT_MIST_OVR_TOGGLE 0xA1
+#if defined(STM32F7XX_ARCH)
+  #define CMD_IO_STATUS_REPORT 0xA2
+#endif // STM32F7XX_ARCH
 
 // If homing is enabled, homing init lock sets Grbl into an alarm state upon power up. This forces
 // the user to perform the homing cycle (or override the locks) before doing anything else. This is

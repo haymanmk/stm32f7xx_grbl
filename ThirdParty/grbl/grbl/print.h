@@ -48,4 +48,8 @@ void printFloat_RateValue(float n);
 // Debug tool to print free memory in bytes at the called point. Not used otherwise.
 void printFreeMemory();
 
+#ifdef STM32F7XX_ARCH
+void print_uint32_base16(uint32_t n);
+#endif
+
 #endif

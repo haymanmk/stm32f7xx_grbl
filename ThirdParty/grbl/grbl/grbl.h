@@ -67,6 +67,7 @@
 
 #ifdef STM32F7XX_ARCH
   #include "step.h"
+  #include "io.h"
 #endif // STM32F7XX_ARCH
 
 #include "planner.h"

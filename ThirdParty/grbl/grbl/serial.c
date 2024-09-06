@@ -234,6 +234,11 @@ void serial_rx_irq(uint8_t data)
           system_set_exec_state_flag(EXEC_MOTION_CANCEL);
         }
         break;
+#if defined(STM32F7XX_ARCH)
+      case CMD_IO_STATUS_REPORT:
+        system_set_exec_user_defined_flag(EXEC_IO_STATUS_REPORT);
+        break;
+#endif
 #ifdef DEBUG
 #if defined(AVR_ARCH)
       case CMD_DEBUG_REPORT:

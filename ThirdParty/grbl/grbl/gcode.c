@@ -280,6 +280,15 @@ uint8_t gc_execute_line(char *line)
               gc_block.modal.override = OVERRIDE_PARKING_MOTION;
               break;
           #endif
+          #if defined(STM32F7XX_ARCH)
+            case 62: case 63:
+              word_bit = MODAL_GROUP_M62;
+              switch(int_value) {
+                case 62: gc_block.modal.output_sync = OUTPUT_SYNC_ON; break;
+                case 63: gc_block.modal.output_sync = OUTPUT_SYNC_OFF; break;
+              }
+              break;
+          #endif
           default: FAIL(STATUS_GCODE_UNSUPPORTED_COMMAND); // [Unsupported M command]
         }
 
@@ -824,6 +833,13 @@ uint8_t gc_execute_line(char *line)
 
   // [21. Program flow ]: No error checks required.
 
+  // [Control output pins]
+  if (bit_istrue(command_words,bit( MODAL_GROUP_M62))) {
+    // [M62 Errors]: P word missing. P is negative (done.) P is greater than max pin value.
+    if (bit_isfalse(value_words,bit(WORD_P))) { FAIL(STATUS_GCODE_VALUE_WORD_MISSING); } // [P word missing]
+    bit_false(value_words,bit(WORD_P));
+  }
+
   // [0. Non-specific error-checks]: Complete unused value words check, i.e. IJK used when in arc
   // radius mode, or axis words that aren't used in the block.
   if (gc_parser_flags & GC_PARSER_JOG_MOTION) {
@@ -956,6 +972,18 @@ uint8_t gc_execute_line(char *line)
     gc_state.modal.coolant = gc_block.modal.coolant;
   }
   pl_data->condition |= gc_state.modal.coolant; // Set condition flag for planner use.
+
+#if defined(STM32F7XX_ARCH)
+  // [Turn ON/OFF output pins]:
+  // Example: M62 P1 , turn ON output pin 1
+  if (bit_istrue(command_words,bit( MODAL_GROUP_M62))) {
+    if (gc_block.values.p) {
+      // Update output control and apply output state when enabling it in this block.
+      // NOTE: All output state changes are synced.
+      io_output_sync(gc_block.values.p, gc_block.modal.output_sync);
+    }
+  }
+#endif
 
   // [9. Override control ]: NOT SUPPORTED. Always enabled. Except for a Grbl-only parking control.
   #ifdef ENABLE_PARKING_OVERRIDE_CONTROL
