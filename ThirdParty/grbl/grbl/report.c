@@ -693,6 +693,13 @@ void report_realtime_status()
   }
   report_util_axis_values(print_position);
 
+#ifdef STM32F7XX_ARCH
+  encoder_degree_t encoder_degree;
+  encoderReadDegree(&encoder_degree);
+  printPgmString(PSTR("|EPos:"));
+  report_util_axis_encoder_values(&encoder_degree);
+#endif // STM32F7XX_ARCH
+
 // Returns planner and serial read buffer states.
 #ifdef REPORT_FIELD_BUFFER_STATE
   if (bit_istrue(settings.status_report_mask, BITFLAG_RT_STATUS_BUFFER_STATE))

@@ -467,7 +467,7 @@ static void prvEchoClientRxTask(void *pvParameters)
 static void prvSerialTask(void *pvParameters)
 {
     Socket_t xSocket = (Socket_t)pvParameters;
-    char str[80] = {'\0'};
+    char str[105] = {'\0'};
     uint8_t strIndex = 0;
 
     for (;;)
