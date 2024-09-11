@@ -57,6 +57,11 @@ void mainGRBL(void *pvParameters)
 #ifdef STM32F7XX_ARCH
   // init TCP
   tcp_server_init();
+
+#ifdef ENCODER_ENABLE
+  // init encoder
+  encoderInit();
+#endif
 #endif // STM32F7XX_ARCH
 
   memset(sys_position, 0, sizeof(sys_position)); // Clear machine position.
