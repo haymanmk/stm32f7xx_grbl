@@ -252,8 +252,10 @@ void st_wake_up()
     STEPPERS_DISABLE_PORT &= ~(1 << STEPPERS_DISABLE_BIT);
   }
 
+#ifdef AVR_ARCH
   // Initialize stepper output bits to ensure first ISR call does not step.
   st.step_outbits = step_port_invert_mask;
+#endif
 
 // Initialize step pulse timing from settings. Here to ensure updating after re-writing.
 #ifdef STEP_PULSE_DELAY
@@ -408,13 +410,13 @@ void stepper_pulse_generation_isr()
   TCNT0 = st.step_pulse_time; // Reload Timer0 counter
   TCCR0B = (1 << CS01);       // Begin Timer0. Full speed, 1/8 prescaler
 #elif defined(STM32F7XX_ARCH)
-  if (stepCalculatePulseData(&st) != HAL_OK)
+  while (stepCalculatePulseData((uint32_t)&st) != HAL_OK)
   {
     // no more buffer to accommodate the pulse data in the step agent.
     // delay 1 ms
     vTaskDelay(1);
     // stepDisablePulseCalculate();
-    return;
+    // return;
   }
 #endif // AVR_ARCH
 
