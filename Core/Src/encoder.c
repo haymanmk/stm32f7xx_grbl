@@ -54,9 +54,9 @@ void encoderReadPositionTask(void *pvParameters)
     for (;;)
     {
         // print encoder degree
-        encoder_degree_t degree;
-        encoderReadDegree(&degree);
-        vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
+        // encoder_degree_t degree;
+        // encoderReadDegree(&degree);
+        // vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
 
         // print heap status
         // printHeapStatus();
