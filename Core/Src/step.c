@@ -184,9 +184,9 @@ void stepInit(void)
     TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
 
     // force output compare mode to inactive
-    FORCE_OC_OUTPUT_LOW((&X_AXIS_TIM_HANDLE), X_AXIS_PULSE_TIM_CHANNEL);
-    FORCE_OC_OUTPUT_LOW((&Y_AXIS_TIM_HANDLE), Y_AXIS_PULSE_TIM_CHANNEL);
-    FORCE_OC_OUTPUT_LOW((&Z_AXIS_TIM_HANDLE), Z_AXIS_PULSE_TIM_CHANNEL);
+    FORCE_OC_OUTPUT_HIGH((&X_AXIS_TIM_HANDLE), X_AXIS_PULSE_TIM_CHANNEL);
+    FORCE_OC_OUTPUT_HIGH((&Y_AXIS_TIM_HANDLE), Y_AXIS_PULSE_TIM_CHANNEL);
+    FORCE_OC_OUTPUT_HIGH((&Z_AXIS_TIM_HANDLE), Z_AXIS_PULSE_TIM_CHANNEL);
 
     // clear DMA interrupt flag
     CLEAR_DMA_IT(X_AXIS_TIM_HANDLE.hdma[X_AXIS_PULSE_TIM_DMA_ID]);
@@ -668,7 +668,7 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
     axis_t axis = GET_AXIS_FROM_TIM_HANDLE(htim);
 
     // force output compare mode to inactive
-    FORCE_OC_OUTPUT_LOW(htim, axisTimerDMAParams[axis].TIM_CHANNEL);
+    FORCE_OC_OUTPUT_HIGH(htim, axisTimerDMAParams[axis].TIM_CHANNEL);
 
     // suspend DMA stream
     // ==> to update DMA buffer length and address, DMA stream should be suspended
@@ -1007,7 +1007,7 @@ void stepBlockAxis(uint8_t axis)
     CLEAR_DMA_IT(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
 
     // force output pin to low in output compare mode
-    FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
+    FORCE_OC_OUTPUT_HIGH(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
 
     DMATransferCompletedAxes |= (1 << axis);
 }
