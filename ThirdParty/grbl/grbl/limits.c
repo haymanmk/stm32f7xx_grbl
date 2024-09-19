@@ -589,27 +589,6 @@ void limits_go_home(uint8_t cycle_mask)
       homing_rate = settings.homing_seek_rate;
     }
 
-#ifdef STM32F7XX_ARCH
-    // reset encoder counter
-    if ((n_cycle - 1) == 0)
-    {
-      // check current homing axis
-      if (cycle_mask & (1 << X_AXIS))
-      {
-        encoderResetCounter(X_AXIS);
-      }
-      else if (cycle_mask & (1 << Y_AXIS))
-      {
-        encoderResetCounter(Y_AXIS);
-      }
-      else if (cycle_mask & (1 << Z_AXIS))
-      {
-        encoderResetCounter(Z_AXIS);
-      }
-    }
-
-#endif // STM32F7XX_ARCH
-
   } while (n_cycle-- > 0);
 
   // The active cycle axes should now be homed and machine limits have been located. By
@@ -660,6 +639,11 @@ void limits_go_home(uint8_t cycle_mask)
 #endif
     }
   }
+#ifdef STM32F7XX_ARCH
+  encoderResetCounter(X_AXIS);
+  encoderResetCounter(Y_AXIS);
+  encoderResetCounter(Z_AXIS);
+#endif                                       // STM32F7XX_ARCH
   sys.step_control = STEP_CONTROL_NORMAL_OP; // Return step control to normal operation.
 }
 

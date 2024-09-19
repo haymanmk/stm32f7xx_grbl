@@ -291,6 +291,9 @@ void protocol_exec_rt_system()
         // lost, continued streaming could cause a serious crash if by chance it gets executed.
 
 #if defined(STM32F7XX_ARCH)
+        rt_exec = sys_rt_exec_alarm; // Copy volatile sys_rt_exec_alarm.
+        if (rt_exec == EXEC_ALARM_EMG_STOP) goto emg_stop;
+
         // Execute and serial print status
         rt_exec = sys_rt_exec_state; // Copy volatile sys_rt_exec_alarm.
         if (rt_exec & EXEC_STATUS_REPORT)
@@ -303,6 +306,7 @@ void protocol_exec_rt_system()
     }
     else if (rt_exec == EXEC_ALARM_EMG_STOP)
     {
+    emg_stop:
       // delay to debounce the EMG stop button
       HAL_Delay(100);
       // start WWDG
