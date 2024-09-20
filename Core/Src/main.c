@@ -144,7 +144,7 @@ int main(void)
   utilsStartUsTimer(&htim14);
 
   // create grbl task
-  xTaskCreate(mainGRBL, "grblTask", configMINIMAL_STACK_SIZE * 4, NULL, tskIDLE_PRIORITY, &mainGRBLTaskHandle);
+  xTaskCreate(mainGRBL, "grblTask", configMINIMAL_STACK_SIZE * 5, NULL, tskIDLE_PRIORITY, &mainGRBLTaskHandle);
 
   // start scheduler
   vTaskStartScheduler();

@@ -500,10 +500,17 @@ void stepper_pulse_generation_isr()
 #endif
 
 #if defined(STM32F7XX_ARCH)
-      if (sys.state & (STATE_HOMING | STATE_JOG))
+      if (sys.state == STATE_HOMING)
       {
         if (pl_block->millimeters)
           return;
+      }
+      else if (sys.state == STATE_JOG)
+      {
+        if (plan_get_current_block() != NULL)
+        {
+          return;
+        }
       }
       else if (gc_state.modal.motion != MOTION_MODE_NONE)
       {
@@ -511,7 +518,7 @@ void stepper_pulse_generation_isr()
         {
           // do nothing
         }
-        else if ((sys.state & STATE_CYCLE) && !(sys.suspend & SUSPEND_MOTION_CANCEL))
+        else if ((sys.state == STATE_CYCLE) && !(sys.suspend & SUSPEND_MOTION_CANCEL))
         {
           if (pl_block->millimeters)
             return;

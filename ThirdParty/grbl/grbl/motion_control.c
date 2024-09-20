@@ -233,10 +233,8 @@ void mc_dwell(float seconds)
   {
     return;
   }
-  // vLoggingPrintf( "mc_dwell: %f\n", seconds );
   protocol_buffer_synchronize();
   delay_sec(seconds, DELAY_MODE_DWELL);
-  // vLoggingPrintf("mc_dwell: done\n");
 }
 
 // Perform homing cycle to locate and set machine zero. Only '$H' executes this command.

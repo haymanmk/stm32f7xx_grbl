@@ -557,6 +557,14 @@ void limits_go_home(uint8_t cycle_mask)
         }
       }
 
+#ifdef STM32F7XX_ARCH
+      // respond to request of realtime status report
+      if (sys_rt_exec_state & EXEC_STATUS_REPORT)
+      {
+        report_realtime_status();
+        system_clear_exec_state_flag(EXEC_STATUS_REPORT);
+      }
+#endif // STM32F7XX_ARCH
 #ifdef ENABLE_DUAL_AXIS
     } while ((STEP_MASK & axislock) || (sys.homing_axis_lock_dual));
 #else
