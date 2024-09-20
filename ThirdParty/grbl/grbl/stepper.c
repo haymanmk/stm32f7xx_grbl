@@ -500,8 +500,7 @@ void stepper_pulse_generation_isr()
 #endif
 
 #if defined(STM32F7XX_ARCH)
-
-      if (sys.state == STATE_HOMING)
+      if (sys.state & (STATE_HOMING | STATE_JOG))
       {
         if (pl_block->millimeters)
           return;
@@ -512,13 +511,13 @@ void stepper_pulse_generation_isr()
         {
           // do nothing
         }
-        else if ((sys.state == STATE_CYCLE) && !(sys.suspend & SUSPEND_MOTION_CANCEL))
+        else if ((sys.state & STATE_CYCLE) && !(sys.suspend & SUSPEND_MOTION_CANCEL))
         {
           if (pl_block->millimeters)
             return;
         }
       }
-#endif                                             // STM32F7XX_ARCH
+#endif
       system_set_exec_state_flag(EXEC_CYCLE_STOP); // Flag main program for cycle end
       return;                                      // Nothing to do but exit.
     }
