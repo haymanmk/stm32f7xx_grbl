@@ -353,7 +353,7 @@ typedef struct
 
 /* exported functions */
 void stepInit(void);
-HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr);
+HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr);
 void stepWakeUp();
 void stepGoIdle();
 void stepEnablePulseCalculate();

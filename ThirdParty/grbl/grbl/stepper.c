@@ -252,8 +252,10 @@ void st_wake_up()
     STEPPERS_DISABLE_PORT &= ~(1 << STEPPERS_DISABLE_BIT);
   }
 
+#ifdef AVR_ARCH
   // Initialize stepper output bits to ensure first ISR call does not step.
   st.step_outbits = step_port_invert_mask;
+#endif
 
 // Initialize step pulse timing from settings. Here to ensure updating after re-writing.
 #ifdef STEP_PULSE_DELAY
@@ -408,13 +410,13 @@ void stepper_pulse_generation_isr()
   TCNT0 = st.step_pulse_time; // Reload Timer0 counter
   TCCR0B = (1 << CS01);       // Begin Timer0. Full speed, 1/8 prescaler
 #elif defined(STM32F7XX_ARCH)
-  if (stepCalculatePulseData((uint32_t *)(&st)) != HAL_OK)
+  while (stepCalculatePulseData((uint32_t)&st) != HAL_OK)
   {
     // no more buffer to accommodate the pulse data in the step agent.
     // delay 1 ms
     vTaskDelay(1);
     // stepDisablePulseCalculate();
-    return;
+    // return;
   }
 #endif // AVR_ARCH
 
@@ -576,6 +578,9 @@ void stepper_pulse_generation_isr()
 #endif
   if (st.counter_y > st.exec_block->step_event_count)
   {
+    // set DEBUG_3_PIN high
+    UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_SET);
+
     st.step_outbits |= (1 << Y_STEP_BIT);
 #if defined(ENABLE_DUAL_AXIS) && (DUAL_AXIS_SELECT == Y_AXIS)
     st.step_outbits_dual = (1 << DUAL_STEP_BIT);
@@ -602,6 +607,9 @@ void stepper_pulse_generation_isr()
       }
 #endif
     }
+
+    // set DEBUG_3_PIN low
+    UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_RESET);
   }
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
   st.counter_z += st.steps[Z_AXIS];
@@ -644,6 +652,8 @@ void stepper_pulse_generation_isr()
 #endif
   }
 
+  // set DEBUG_4_PIN high
+  UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, GPIO_PIN_SET);
   st.step_count--; // Decrement step events count
   if (st.step_count == 0)
   {
@@ -654,6 +664,8 @@ void stepper_pulse_generation_isr()
       segment_buffer_tail = 0;
     }
   }
+  // set DEBUG_4_PIN low
+  UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, GPIO_PIN_RESET);
 
   st.step_outbits ^= step_port_invert_mask; // Apply step port invert mask
 #ifdef ENABLE_DUAL_AXIS

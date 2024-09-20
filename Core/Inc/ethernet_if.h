@@ -17,9 +17,9 @@ static uint8_t MACAddr[6] = {0x00, 0x80, 0xE1, 0x01, 0x02, 0x03};
  * ipconfigUSE_DHCP is 0 or if ipconfigUSE_DHCP is 1 but DHCP auto configuration
  * failed.
  */
-static uint8_t IPAddr[4] = {172, 16, 0, 10};
+// static uint8_t IPAddr[4] = {172, 16, 0, 10};
 static uint8_t NetMask[4] = {255, 240, 0, 0};
-static uint8_t GatewayAddr[4] = {172, 16, 0, 1};
+// static uint8_t GatewayAddr[4] = {172, 16, 0, 1};
 static uint8_t DNSAddr[4] = {8, 8, 8, 8};
 
 #pragma GCC diagnostic pop

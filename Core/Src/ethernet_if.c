@@ -12,6 +12,7 @@ extern NetworkInterface_t *pxSTM32Fxx_FillInterfaceDescriptor(BaseType_t xEMACIn
 static void prvCreateTCPServerSocketTasks(void *pvParameters);
 static void prvEchoClientRxTask(void *pvParameters);
 static void prvSerialTask(void *pvParameters);
+static void prvBlinkLED(void *pvParameters);
 
 NetworkInterface_t xInterfaces[1];
 struct xNetworkEndPoint xEndPoints[1];
@@ -21,6 +22,7 @@ TaskHandle_t echoClientRxTaskHandle;
 TaskHandle_t serialTaskHandle;
 static SemaphoreHandle_t connectionCreatedSemaphoreHandle;
 SemaphoreHandle_t deleteTaskSemaphoreHandle;
+static uint16_t listeningPort = 0;
 
 BaseType_t tcp_server_init()
 {
@@ -30,6 +32,46 @@ BaseType_t tcp_server_init()
 
     /* Initialise the interface descriptor for WinPCap for example. */
     pxSTM32Fxx_FillInterfaceDescriptor(0, &(xInterfaces[0]));
+
+    uint8_t IPAddr[4] = {
+        settings.ip_address_0,
+        settings.ip_address_1,
+        settings.ip_address_2,
+        settings.ip_address_3};
+    uint8_t GatewayAddr[4] = {
+        settings.ip_address_0,
+        settings.ip_address_1,
+        settings.ip_address_2,
+        1};
+    listeningPort = LISTENING_PORT + settings.tcp_port;
+
+    // check if USER Button is continuously pressed over 5 seconds,
+    // then use the default IP address and port
+    if (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin) == GPIO_PIN_SET)
+    {
+        // wait for 5 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000));
+
+        // check if USER Button is still pressed
+        if (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin) == GPIO_PIN_SET)
+        {
+            // use the default IP address and port
+            IPAddr[0] = 172;
+            IPAddr[1] = 16;
+            IPAddr[2] = 0;
+            IPAddr[3] = 10;
+
+            GatewayAddr[0] = 172;
+            GatewayAddr[1] = 16;
+            GatewayAddr[2] = 0;
+            GatewayAddr[3] = 1;
+
+            listeningPort = LISTENING_PORT;
+
+            // start the LED blinking task
+            xTaskCreate(prvBlinkLED, "BlinkLED", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+        }
+    }
 
     FreeRTOS_FillEndPoint(&(xInterfaces[0]), &(xEndPoints[0]), IPAddr,
                           NetMask, GatewayAddr, DNSAddr, MACAddr);
@@ -211,7 +253,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
 
     /* Set the listening port to 10000. */
     // xBindAddress.sin_address = (IP_Address_t)FreeRTOS_inet_addr_quick(0, 0, 0, 0);
-    xBindAddress.sin_port = (uint16_t)LISTENING_PORT;
+    xBindAddress.sin_port = listeningPort;
     xBindAddress.sin_port = FreeRTOS_htons(xBindAddress.sin_port);
     xBindAddress.sin_family = FREERTOS_AF_INET;
 
@@ -425,7 +467,7 @@ static void prvEchoClientRxTask(void *pvParameters)
 static void prvSerialTask(void *pvParameters)
 {
     Socket_t xSocket = (Socket_t)pvParameters;
-    char str[80] = {'\0'};
+    char str[105] = {'\0'};
     uint8_t strIndex = 0;
 
     for (;;)
@@ -503,5 +545,27 @@ void HAL_ETH_ErrorCallback(ETH_HandleTypeDef *heth)
         /* clear interrupt flag */
         __HAL_ETH_DMA_CLEAR_FLAG(heth, ETH_DMA_FLAG_AIS);
         FreeRTOS_debug_printf(("ETH DMA Error: Abnormal interrupt summary\n"));
+    }
+}
+
+static void prvBlinkLED(void *pvParameters)
+{
+    for (;;)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            // Turn on the LEDs, LD1 and LD2
+            HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+            HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+            vTaskDelay(pdMS_TO_TICKS(200));
+
+            // Turn off the LEDs, LD1 and LD2
+            HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+
+        // Delay for 1.5 seconds
+        vTaskDelay(pdMS_TO_TICKS(800));
     }
 }

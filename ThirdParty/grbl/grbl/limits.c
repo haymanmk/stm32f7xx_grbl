@@ -573,7 +573,25 @@ void limits_go_home(uint8_t cycle_mask)
     __enable_irq();
 #endif                                        // STM32F7XX_ARCH
     delay_ms(settings.homing_debounce_delay); // Delay to allow transient dynamics to dissipate.
-
+#ifdef STM32F7XX_ARCH
+    if (approach)
+    {
+      // check current homing axis
+      if (cycle_mask & (1 << X_AXIS))
+      {
+        // reset encoder counters
+        encoderResetCounter(X_AXIS);
+      }
+      if (cycle_mask & (1 << Y_AXIS))
+      {
+        encoderResetCounter(Y_AXIS);
+      }
+      if (cycle_mask & (1 << Z_AXIS))
+      {
+        encoderResetCounter(Z_AXIS);
+      }
+    }
+#endif // STM32F7XX_ARCH
     // Reverse direction and reset homing rate for locate cycle(s).
     approach = !approach;
 
@@ -588,27 +606,6 @@ void limits_go_home(uint8_t cycle_mask)
       max_travel = settings.homing_pulloff;
       homing_rate = settings.homing_seek_rate;
     }
-
-#ifdef STM32F7XX_ARCH
-    // reset encoder counter
-    if ((n_cycle - 1) == 0)
-    {
-      // check current homing axis
-      if (cycle_mask & (1 << X_AXIS))
-      {
-        encoderResetCounter(X_AXIS);
-      }
-      else if (cycle_mask & (1 << Y_AXIS))
-      {
-        encoderResetCounter(Y_AXIS);
-      }
-      else if (cycle_mask & (1 << Z_AXIS))
-      {
-        encoderResetCounter(Z_AXIS);
-      }
-    }
-
-#endif // STM32F7XX_ARCH
 
   } while (n_cycle-- > 0);
 

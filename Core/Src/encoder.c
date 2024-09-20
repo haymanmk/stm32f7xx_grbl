@@ -4,6 +4,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "encoder.h"
+#include "grbl.h"
 
 #define FULL_COUNTER 0xFFFF
 #define HALF_COUNTER 0x7FFF
@@ -53,18 +54,17 @@ void encoderReadPositionTask(void *pvParameters)
     for (;;)
     {
         // print encoder degree
-        encoder_degree_t degree;
-        encoderReadDegree(&degree);
+        // encoder_degree_t degree;
+        // encoderReadDegree(&degree);
         // vLoggingPrintf("X: %.2f, Y: %.2f, Z: %.2f\n", degree[X_AXIS], degree[Y_AXIS], degree[Z_AXIS]);
 
         // print heap status
         // printHeapStatus();
-        
+
         // Delay for 1 second
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-
 
 void encoderInterruptHandler()
 {
@@ -115,14 +115,14 @@ void encoderResetCounter(axis_t axis)
 
 /**
  * @brief Read the degree value from the encoder
- * @return int32_t degree value x 100
+ * @return void
  */
 void encoderReadDegree(encoder_degree_t *degree)
 {
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
         encoder_param_t *encoder = &encoder_param[i];
-        *(float*)(degree)[i] = (float)(encoder->counter32Bit * (360.0 / PULSE_PER_REVOLUTION));
+        ((float *)degree)[i] = (float)(encoder->counter32Bit * (360.0 / PULSE_PER_REVOLUTION));
     }
 }
 
@@ -139,15 +139,37 @@ void encoderReadInstantDegree(encoder_degree_t *degree)
     encoderReadDegree(degree);
 }
 
+void encoderReadPosition(encoder_position_t *position)
+{
+    encoder_degree_t deg;
+    encoderReadDegree(&deg);
+
+    for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
+    {
+        ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0);
+    }
+}
+
+void encoderReadInstantPosition(encoder_position_t *position)
+{
+    encoder_degree_t deg;
+    encoderReadInstantDegree(&deg);
+
+    for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
+    {
+        ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0);
+    }
+}
+
 // ===> Debugging purpose
 void printHeapStatus(void)
 {
     // Get the current free heap size
     size_t freeHeapSize = xPortGetFreeHeapSize();
-    
+
     // Get the minimum free heap size ever recorded
     size_t minEverFreeHeapSize = xPortGetMinimumEverFreeHeapSize();
-    
+
     // Print the heap sizes
     vLoggingPrintf("Current free heap size: %u bytes\n", (unsigned int)freeHeapSize);
     vLoggingPrintf("Minimum ever free heap size: %u bytes\n", (unsigned int)minEverFreeHeapSize);

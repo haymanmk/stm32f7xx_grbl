@@ -62,12 +62,12 @@ static void report_util_axis_values(float *axis_value)
 }
 #ifdef STM32F7XX_ARCH
 extern encoder_degree_t probe_encoder_degree;
-static void report_util_axis_encoder_values(encoder_degree_t *degree)
+static void report_util_axis_encoder_values(uint32_t value_addr)
 {
-  // print encoder degree
+  // print encoder degree/position
   for (uint8_t i = 0; i < N_AXIS; i++)
   {
-    printFloat(((float *)degree)[i], N_DECIMAL_ENCODERVALUE);
+    printFloat(((float *)value_addr)[i], N_DECIMAL_ENCODERVALUE);
     if (i < (N_AXIS - 1))
     {
       serial_write(',');
@@ -129,6 +129,14 @@ static void report_util_uint8_setting(uint8_t n, int val)
   print_uint8_base10(val);
   report_util_line_feed(); // report_util_setting_string(n);
 }
+#ifdef STM32F7XX_ARCH
+// static void report_util_uint16_setting(uint8_t n, uint16_t val)
+// {
+//   report_util_setting_prefix(n);
+//   print_uint16_base10(val);
+//   report_util_line_feed(); // report_util_setting_string(n);
+// }
+#endif // STM32F7XX_ARCH
 static void report_util_float_setting(uint8_t n, float val, uint8_t n_decimal)
 {
   report_util_setting_prefix(n);
@@ -255,6 +263,13 @@ void report_grbl_settings()
 #else
   report_util_uint8_setting(32, 0);
 #endif
+#ifdef STM32F7XX_ARCH
+  report_util_uint8_setting(33, settings.ip_address_0);
+  report_util_uint8_setting(34, settings.ip_address_1);
+  report_util_uint8_setting(35, settings.ip_address_2);
+  report_util_uint8_setting(36, settings.ip_address_3);
+  report_util_uint8_setting(37, settings.tcp_port);
+#endif // STM32F7XX_ARCH
   // Print axis settings
   uint8_t idx, set_idx;
   uint8_t val = AXIS_SETTINGS_START_VAL;
@@ -276,6 +291,11 @@ void report_grbl_settings()
       case 3:
         report_util_float_setting(val + idx, -settings.max_travel[idx], N_DECIMAL_SETTINGVALUE);
         break;
+#ifdef STM32F7XX_ARCH
+      case 4:
+        report_util_float_setting(val + idx, settings.mm_per_rev[idx], N_DECIMAL_SETTINGVALUE);
+        break;
+#endif
       }
     }
     val += AXIS_SETTINGS_INCREMENT;
@@ -294,8 +314,8 @@ void report_probe_parameters()
   report_util_axis_values(print_position);
   serial_write(':');
 #ifdef STM32F7XX_ARCH
-  printPgmString(PSTR("|EPos:"));
-  report_util_axis_encoder_values(&probe_encoder_degree);
+  printPgmString(PSTR("|:"));
+  report_util_axis_encoder_values((uint32_t)&probe_encoder_degree);
   serial_write(':');
 #endif // STM32F7XX_ARCH
   print_uint8_base10(sys.probe_succeeded);
@@ -612,7 +632,7 @@ void report_realtime_status()
   case STATE_ALARM:
     printPgmString(PSTR("Alarm"));
     if (sys_rt_exec_alarm)
-      serial_write(sys_rt_exec_alarm + '0');
+      print_uint8_base10(sys_rt_exec_alarm);
     break;
 #endif
   case STATE_CHECK_MODE:
@@ -677,6 +697,13 @@ void report_realtime_status()
     printPgmString(PSTR("|WPos:"));
   }
   report_util_axis_values(print_position);
+
+#ifdef STM32F7XX_ARCH
+  encoder_position_t _position;
+  encoderReadPosition(&_position);
+  printPgmString(PSTR("|EPos:"));
+  report_util_axis_encoder_values((uint32_t)&_position);
+#endif // STM32F7XX_ARCH
 
 // Returns planner and serial read buffer states.
 #ifdef REPORT_FIELD_BUFFER_STATE
@@ -903,33 +930,33 @@ void report_realtime_debug()
  */
 void report_io_status()
 {
-    uint32_t status = 0;
-    // gather the status of input pins
-    status |= (LIMIT_PIN & (1 << X_LIMIT_BIT)) ? (1 << PIN_X_LIMIT) : 0;
-    status |= (LIMIT_PIN & (1 << Y_LIMIT_BIT)) ? (1 << PIN_Y_LIMIT) : 0;
-    status |= (LIMIT_PIN & (1 << Z_LIMIT_BIT)) ? (1 << PIN_Z_LIMIT) : 0;
-    status |= (PROBE_PIN & (1 << PROBE_BIT)) ? (1 << PIN_PROBE) : 0;
-    status |= (CONTROL_PIN & (1 << CONTROL_RESET_BIT)) ? (1 << PIN_RESET) : 0;
-    status |= (CONTROL_PIN & (1 << CONTROL_FEED_HOLD_BIT)) ? (1 << PIN_FEED_HOLD) : 0;
-    status |= (CONTROL_PIN & (1 << CONTROL_CYCLE_START_BIT)) ? (1 << PIN_CYCLE_START) : 0;
-    status |= (CONTROL_PIN & (1 << CONTROL_SAFETY_DOOR_BIT)) ? (1 << PIN_SAFETY_DOOR) : 0;
+  uint32_t status = 0;
+  // gather the status of input pins
+  status |= (LIMIT_PIN & (1 << X_LIMIT_BIT)) ? (1 << PIN_X_LIMIT) : 0;
+  status |= (LIMIT_PIN & (1 << Y_LIMIT_BIT)) ? (1 << PIN_Y_LIMIT) : 0;
+  status |= (LIMIT_PIN & (1 << Z_LIMIT_BIT)) ? (1 << PIN_Z_LIMIT) : 0;
+  status |= (PROBE_PIN & (1 << PROBE_BIT)) ? (1 << PIN_PROBE) : 0;
+  status |= (CONTROL_PIN & (1 << CONTROL_RESET_BIT)) ? (1 << PIN_RESET) : 0;
+  status |= (CONTROL_PIN & (1 << CONTROL_FEED_HOLD_BIT)) ? (1 << PIN_FEED_HOLD) : 0;
+  status |= (CONTROL_PIN & (1 << CONTROL_CYCLE_START_BIT)) ? (1 << PIN_CYCLE_START) : 0;
+  status |= (CONTROL_PIN & (1 << CONTROL_SAFETY_DOOR_BIT)) ? (1 << PIN_SAFETY_DOOR) : 0;
 
-    // gather the status of output pins
-    status |= (X_DIRECTION_PORT & (1 << X_DIRECTION_BIT)) ? (1 << PIN_X_DIRECTION) : 0;
-    status |= (Y_DIRECTION_PORT & (1 << Y_DIRECTION_BIT)) ? (1 << PIN_Y_DIRECTION) : 0;
-    status |= (Z_DIRECTION_PORT & (1 << Z_DIRECTION_BIT)) ? (1 << PIN_Z_DIRECTION) : 0;
-    status |= (STEPPERS_DISABLE_PORT & (1 << STEPPERS_DISABLE_BIT)) ? (1 << PIN_STEPPERS_DISABLE) : 0;
-    status |= (COOLANT_FLOOD_PORT & (1 << COOLANT_FLOOD_BIT)) ? (1 << PIN_COOLANT_FLOOD) : 0;
-    status |= (SPINDLE_ENABLE_PORT & (1 << SPINDLE_ENABLE_BIT)) ? (1 << PIN_SPINDLE_ENABLE) : 0;
-    status |= (SPINDLE_DIRECTION_PORT & (1 << SPINDLE_DIRECTION_BIT)) ? (1 << PIN_SPINDLE_DIRECTION) : 0;
-    status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_0_BIT)) ? (1 << PIN_USER_OUTPUT_0) : 0;
-    status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_1_BIT)) ? (1 << PIN_USER_OUTPUT_1) : 0;
-    status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_2_BIT)) ? (1 << PIN_USER_OUTPUT_2) : 0;
-    status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_3_BIT)) ? (1 << PIN_USER_OUTPUT_3) : 0;
+  // gather the status of output pins
+  status |= (X_DIRECTION_PORT & (1 << X_DIRECTION_BIT)) ? (1 << PIN_X_DIRECTION) : 0;
+  status |= (Y_DIRECTION_PORT & (1 << Y_DIRECTION_BIT)) ? (1 << PIN_Y_DIRECTION) : 0;
+  status |= (Z_DIRECTION_PORT & (1 << Z_DIRECTION_BIT)) ? (1 << PIN_Z_DIRECTION) : 0;
+  status |= (STEPPERS_DISABLE_PORT & (1 << STEPPERS_DISABLE_BIT)) ? (1 << PIN_STEPPERS_DISABLE) : 0;
+  status |= (COOLANT_FLOOD_PORT & (1 << COOLANT_FLOOD_BIT)) ? (1 << PIN_COOLANT_FLOOD) : 0;
+  status |= (SPINDLE_ENABLE_PORT & (1 << SPINDLE_ENABLE_BIT)) ? (1 << PIN_SPINDLE_ENABLE) : 0;
+  status |= (SPINDLE_DIRECTION_PORT & (1 << SPINDLE_DIRECTION_BIT)) ? (1 << PIN_SPINDLE_DIRECTION) : 0;
+  status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_0_BIT)) ? (1 << PIN_USER_OUTPUT_0) : 0;
+  status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_1_BIT)) ? (1 << PIN_USER_OUTPUT_1) : 0;
+  status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_2_BIT)) ? (1 << PIN_USER_OUTPUT_2) : 0;
+  status |= (USER_OUTPUT_PORT & (1 << USER_OUTPUT_3_BIT)) ? (1 << PIN_USER_OUTPUT_3) : 0;
 
-    printPgmString(PSTR("[IO:"));
-    print_uint32_base16(status);
-    serial_write(']');
-    report_util_line_feed();
+  printPgmString(PSTR("[IO:"));
+  print_uint32_base16(status);
+  serial_write(']');
+  report_util_line_feed();
 }
 #endif

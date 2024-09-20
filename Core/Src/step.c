@@ -268,7 +268,7 @@ void stepInit(void)
 void stepTask(void *pvParameters)
 {
     // set PD3 to high to enable level shifter
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_3, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_3, GPIO_PIN_SET);
 
     // set general notification to data not available to start the process
     generalNotification |= (GENERAL_NOTIFICATION_GET_NEW_BUFFER | GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
@@ -400,7 +400,7 @@ void stepTask(void *pvParameters)
         else
         {
             // set PD5 to high ===> signal the start of resuming DMA stream
-            HAL_GPIO_WritePin(GPIOD, GPIO_PIN_5, GPIO_PIN_SET);
+            // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_5, GPIO_PIN_SET);
 
             // Determine if it should request for new data or not.
             if (currentStepperState == DMATransferCompletedAxes)
@@ -428,15 +428,15 @@ void stepTask(void *pvParameters)
             generalNotification &= ~GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES;
 
             // set PD5 to low ===> signal the end of resuming DMA stream
-            HAL_GPIO_WritePin(GPIOD, GPIO_PIN_5, GPIO_PIN_RESET);
+            // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_5, GPIO_PIN_RESET);
         }
     }
 }
 
-HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
+HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 {
-    // set PD4 to high ===> signal the start of pulse calculation
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_4, GPIO_PIN_SET);
+    // set DEBUG_1_Pin to high ===> signal the start of pulse calculation
+    UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 1);
 
     static uint8_t getNewBuffer = (1 << NUM_DIMENSIONS) - 1; // bit 0: x axis, bit 1: y axis, bit 2: z axis
     static pulse_block_t *pulseBlock = {0};
@@ -452,12 +452,26 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
         // update variables
         cycles_per_tick = st->exec_segment->cycles_per_tick;
         // amass_level = st->exec_segment->amass_level;
+
+        if ((st->exec_segment->cycles_per_tick == 0) || (st->exec_segment->cycles_per_tick == 0xffffffff))
+        {
+            // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
+            UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
+
+            // debug message
+            vLoggingPrintf("errParam\n");
+
+            return HAL_ERROR;
+        }
     }
 
-    if (!(st->step_pulse_time) || (st->exec_segment->cycles_per_tick == 0) || (st->exec_segment->cycles_per_tick == 0xffffffff))
+    if (!(st->step_pulse_time))
     {
-        // set PD4 to low ===> signal the end of pulse calculation
-        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_4, GPIO_PIN_RESET);
+        // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
+        UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
+
+        // debug message
+        vLoggingPrintf("errZero\n");
 
         return HAL_ERROR;
     }
@@ -475,8 +489,8 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
             {
                 // No more buffer available to store pulse data
 
-                // set PD4 to low ===> signal the end of pulse calculation
-                HAL_GPIO_WritePin(GPIOD, GPIO_PIN_4, GPIO_PIN_RESET);
+                // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
+                UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
 
                 return HAL_BUSY;
             }
@@ -526,6 +540,9 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
 
         if (st->step_outbits & (1 << step_bit))
         {
+            // set DEBUG_2_Pin to high ===> signal the start of pulse calculation
+            UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
+
             // set this axis to ACTIVE state
             pulseBlock->motion_control_state |= (1 << i);
 
@@ -544,14 +561,17 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
                 // set the flag to get new buffer
                 getNewBuffer |= (1 << i);
             }
+
+            // set DEBUG_2_Pin to low ===> signal the end of pulse calculation
+            UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
         }
     }
 
     // update variables
     currentCounterValue += cycles_per_tick; // * (amass_level + 1);
 
-    // set PD4 to low ===> signal the end of pulse calculation
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_4, GPIO_PIN_RESET);
+    // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
+    UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
 
     return HAL_OK;
 }
@@ -559,7 +579,7 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t *st_addr)
 void stepUpdateDMABuffer(uint32_t address)
 {
     // set PD7 to high ===> signal the start of updating DMA buffer
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
 
     pulse_block_t *pulseBlock = (pulse_block_t *)address;
     uint8_t upcomingAxesActiveState = pulseBlock->motion_control_state & (~stepBlockedAxes); // get upcoming axes active state
@@ -627,7 +647,7 @@ void stepUpdateDMABuffer(uint32_t address)
      */
 
     // set PD7 to low ===> signal the end of updating DMA buffer
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
 }
 
 /* =========================================================== */
@@ -642,7 +662,7 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
     TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
 
     // set PD6 to high ===> signal the start of ISR
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);
+    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);
 
     // identify the axis
     axis_t axis = GET_AXIS_FROM_TIM_HANDLE(htim);
@@ -658,7 +678,7 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
     if (generalNotification & GENERAL_NOTIFICATION_FIRST_TIME_START)
     {
         // set PD6 to low ===> signal the end of ISR
-        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
+        // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
 
         return;
     }
@@ -704,7 +724,7 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
     }
 
     // set PD6 to low ===> signal the end of ISR
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
+    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
 }
 
 /* =========================================================== */

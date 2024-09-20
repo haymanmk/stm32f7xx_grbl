@@ -46,6 +46,7 @@
 
 #ifdef STM32F7XX_ARCH
   #include "stm32f7xx_grbl.h"
+  #include "ethernet_if.h"
   #define F_CPU 108000000
 #endif // STM32F7XX_ARCH
 

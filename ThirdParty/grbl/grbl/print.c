@@ -80,6 +80,37 @@ void print_uint8_base10(uint8_t n)
   if (digit_a) { serial_write(digit_a); }
 }
 
+#ifdef STM32F7XX_ARCH
+// Prints an uint16 variable in base 10.
+void print_uint16_base10(uint16_t n)
+{
+  uint8_t digit_a = 0;
+  uint8_t digit_b = 0;
+  uint8_t digit_c = 0;
+  if (n >= 10000) { // 10000-65535
+    digit_a = '0' + n % 10;
+    n /= 10;
+  }
+  if (n >= 1000) { // 1000-9999
+    digit_b = '0' + n % 10;
+    n /= 10;
+  }
+  if (n >= 100) { // 100-999
+    digit_c = '0' + n % 10;
+    n /= 10;
+  }
+  if (n >= 10) { // 10-99
+    serial_write('0' + n / 10);
+    serial_write('0' + n % 10);
+  } else {
+    serial_write('0' + n);
+  }
+  if (digit_c) { serial_write(digit_c); }
+  if (digit_b) { serial_write(digit_b); }
+  if (digit_a) { serial_write(digit_a); }
+}
+#endif // STM32F7XX_ARCH
+
 
 // Prints an uint8 variable in base 2 with desired number of desired digits.
 void print_uint8_base2_ndigit(uint8_t n, uint8_t digits) {
