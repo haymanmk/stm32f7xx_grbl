@@ -293,7 +293,7 @@ void protocol_exec_rt_system()
 #if defined(STM32F7XX_ARCH)
         rt_exec = sys_rt_exec_alarm; // Copy volatile sys_rt_exec_alarm.
         if (rt_exec == EXEC_ALARM_EMG_STOP)
-          break;
+          goto emg_stop;
 
         // Execute and serial print status
         rt_exec = sys_rt_exec_state; // Copy volatile sys_rt_exec_alarm.
@@ -305,10 +305,10 @@ void protocol_exec_rt_system()
 #endif
       } while (bit_isfalse(sys_rt_exec_state, EXEC_RESET));
     }
-
 #if defined(STM32F7XX_ARCH)
-    if (rt_exec == EXEC_ALARM_EMG_STOP)
+    else if (rt_exec == EXEC_ALARM_EMG_STOP)
     {
+    emg_stop:
       // delay to debounce the EMG stop button
       HAL_Delay(1000);
       // wait here until the EMG stop is released
