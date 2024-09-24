@@ -926,7 +926,7 @@ void report_realtime_debug()
 #if defined(STM32F7XX_ARCH)
 /**
  * @brief Report the status of I/O pins.
- * @return uint16_t status of I/O pins; inputs: bit 0-15, outputs: bit 16-31
+ * @return uint32_t status of I/O pins; inputs: bit 0-15, outputs: bit 16-31
  */
 void report_io_status()
 {
