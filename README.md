@@ -28,7 +28,7 @@
   - `bit 25`: PIN_USER_OUTPUT_2
   - `bit 26`: PIN_USER_OUTPUT_3
 
-## control Output Status
+## Control Output Status
 
 - `M62 P[BitID]` - Set output pin specified by `BitID` as **ACTIVE**. `BitID` is defined in the [I/O List](#io-list). e.g. `M62 P23`, whish activates output pin `PIN_USER_OUTPUT_0`.
 - `M63 P[BitID]` - **DEACTIVE** output pin specified by `BitID`.
