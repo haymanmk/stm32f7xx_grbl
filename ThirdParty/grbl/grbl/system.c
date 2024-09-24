@@ -43,15 +43,6 @@ void system_init()
 #endif // DISABLE_CONTROL_PIN_PULL_UP
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CONTROL_GPIO_GROUP, &GPIO_InitStruct);
-
-  // check the state of the control pins to perform according actions
-  uint8_t control_state = system_control_get_state();
-
-  // check if the reset pin is active
-  if (bit_istrue(control_state, CONTROL_PIN_INDEX_RESET))
-  {
-    system_set_exec_alarm(EXEC_ALARM_EMG_STOP); // Indicate a critical event
-  }
 #endif // AVR_ARCH
 }
 
@@ -109,6 +100,9 @@ void system_control_pin_isr(uint16_t GPIO_Pin)
       mc_reset();
 #ifdef STM32F7XX_ARCH
       system_set_exec_alarm(EXEC_ALARM_EMG_STOP); // Indicate hard limit critical event
+
+      // start WWDG
+      startWWDG();
 #endif
     }
     if (bit_istrue(pin, CONTROL_PIN_INDEX_CYCLE_START))
@@ -274,7 +268,7 @@ uint8_t system_execute_line(char *line)
       if (system_check_safety_door_ajar())
       {
         return (STATUS_CHECK_DOOR);
-      }                         // Block if safety door is ajar.
+      } // Block if safety door is ajar.
       sys.state = STATE_HOMING; // Set system state variable
       if (line[2] == 0)
       {
@@ -391,7 +385,7 @@ uint8_t system_execute_line(char *line)
         if (sys.state != STATE_IDLE)
         {
           return (STATUS_IDLE_ERROR);
-        }                  // Store only when idle.
+        } // Store only when idle.
         helper_var = true; // Set helper_var to flag storing method.
         // No break. Continues into default: to read remaining command characters.
       }

@@ -203,8 +203,7 @@ void limits_isr(uint16_t GPIO_Pin)
       axis = Z_AXIS;
     }
 
-    if (axis < NUM_DIMENSIONS && (sys.homing_axis_lock & get_step_pin_mask(axis)))
-
+    if ((axis < NUM_DIMENSIONS) && (sys.homing_axis_lock & get_step_pin_mask(axis)))
     {
       // block the axis
       stepBlockAxis(axis);

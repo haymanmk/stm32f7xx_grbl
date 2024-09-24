@@ -49,6 +49,17 @@ void protocol_main_loop()
     }
   }
 #endif
+
+#if defined(STM32F7XX_ARCH)
+  // Check for EMG stop button
+  if (bit_istrue(system_control_get_state(), CONTROL_PIN_INDEX_RESET))
+  {
+    system_set_exec_alarm(EXEC_ALARM_EMG_STOP); // Indicate a critical event
+    protocol_execute_realtime();                // Enter EMG stop mode. Should return as IDLE state.
+    sys.state = STATE_ALARM;                    // Ensure alarm state is set.
+  }
+#endif
+
   // Check for and report alarm state after a reset, error, or an initial power up.
   // NOTE: Sleep mode disables the stepper drivers and position can't be guaranteed.
   // Re-initialize the sleep state as an ALARM mode to ensure user homes or acknowledges.
@@ -291,10 +302,6 @@ void protocol_exec_rt_system()
         // lost, continued streaming could cause a serious crash if by chance it gets executed.
 
 #if defined(STM32F7XX_ARCH)
-        rt_exec = sys_rt_exec_alarm; // Copy volatile sys_rt_exec_alarm.
-        if (rt_exec == EXEC_ALARM_EMG_STOP)
-          goto emg_stop;
-
         // Execute and serial print status
         rt_exec = sys_rt_exec_state; // Copy volatile sys_rt_exec_alarm.
         if (rt_exec & EXEC_STATUS_REPORT)
@@ -308,7 +315,6 @@ void protocol_exec_rt_system()
 #if defined(STM32F7XX_ARCH)
     else if (rt_exec == EXEC_ALARM_EMG_STOP)
     {
-    emg_stop:
       // delay to debounce the EMG stop button
       HAL_Delay(1000);
       // wait here until the EMG stop is released

@@ -410,13 +410,13 @@ void stepper_pulse_generation_isr()
   TCNT0 = st.step_pulse_time; // Reload Timer0 counter
   TCCR0B = (1 << CS01);       // Begin Timer0. Full speed, 1/8 prescaler
 #elif defined(STM32F7XX_ARCH)
-  while (stepCalculatePulseData((uint32_t)&st) != HAL_OK)
+  if (stepCalculatePulseData((uint32_t)&st) != HAL_OK)
   {
     // no more buffer to accommodate the pulse data in the step agent.
     // delay 1 ms
     vTaskDelay(1);
     // stepDisablePulseCalculate();
-    // return;
+    return;
   }
 #endif // AVR_ARCH
 
@@ -486,8 +486,6 @@ void stepper_pulse_generation_isr()
 
       // clear output bits
       st.step_outbits = step_port_invert_mask;
-      // st_go_idle();
-      // stepDisablePulseCalculate();
       busy = false;
 #endif // AVR_ARCH
 

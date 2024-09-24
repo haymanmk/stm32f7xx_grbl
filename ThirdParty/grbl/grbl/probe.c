@@ -20,40 +20,37 @@
 
 #include "grbl.h"
 
-
 // Inverts the probe pin state depending on user settings and probing cycle mode.
 IO_TYPE probe_invert_mask;
 
 #ifdef STM32F7XX_ARCH
-  encoder_degree_t probe_encoder_degree;
+encoder_degree_t probe_encoder_position;
 #endif // STM32F7XX_ARCH
-
 
 // Probe pin initialization routine.
 void probe_init()
 {
 #if defined(AVR_ARCH)
   PROBE_DDR &= ~(PROBE_MASK); // Configure as input pins
-  #ifdef DISABLE_PROBE_PIN_PULL_UP
-    PROBE_PORT &= ~(PROBE_MASK); // Normal low operation. Requires external pull-down.
-  #else
-    PROBE_PORT |= PROBE_MASK;    // Enable internal pull-up resistors. Normal high operation.
-  #endif
+#ifdef DISABLE_PROBE_PIN_PULL_UP
+  PROBE_PORT &= ~(PROBE_MASK); // Normal low operation. Requires external pull-down.
+#else
+  PROBE_PORT |= PROBE_MASK; // Enable internal pull-up resistors. Normal high operation.
+#endif
 #elif defined(STM32F7XX_ARCH)
   // Configure the probe pin as an input with pull-up resistor.
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   GPIO_InitStruct.Pin = PROBE_MASK;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  #ifdef DISABLE_PROBE_PIN_PULL_UP
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-  #else
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-  #endif
+#ifdef DISABLE_PROBE_PIN_PULL_UP
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+#else
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+#endif
   HAL_GPIO_Init(PROBE_GPIO_GROUP, &GPIO_InitStruct);
-#endif // AVR_ARCH
+#endif                                // AVR_ARCH
   probe_configure_invert_mask(false); // Initialize invert mask.
 }
-
 
 // Called by probe_init() and the mc_probe() routines. Sets up the probe pin invert mask to
 // appropriately set the pin logic according to setting for normal-high/normal-low operation
@@ -61,26 +58,31 @@ void probe_init()
 void probe_configure_invert_mask(uint8_t is_probe_away)
 {
   probe_invert_mask = 0; // Initialize as zero.
-  if (bit_isfalse(settings.flags,BITFLAG_INVERT_PROBE_PIN)) { probe_invert_mask ^= PROBE_MASK; }
-  if (is_probe_away) { probe_invert_mask ^= PROBE_MASK; }
+  if (bit_isfalse(settings.flags, BITFLAG_INVERT_PROBE_PIN))
+  {
+    probe_invert_mask ^= PROBE_MASK;
+  }
+  if (is_probe_away)
+  {
+    probe_invert_mask ^= PROBE_MASK;
+  }
 }
 
-
 // Returns the probe pin state. Triggered = true. Called by gcode parser and probe state monitor.
-IO_TYPE probe_get_state() { return((PROBE_PIN & PROBE_MASK) ^ probe_invert_mask); }
-
+IO_TYPE probe_get_state() { return ((PROBE_PIN & PROBE_MASK) ^ probe_invert_mask); }
 
 // Monitors probe pin state and records the system position when detected. Called by the
 // stepper ISR per ISR tick.
 // NOTE: This function must be extremely efficient as to not bog down the stepper ISR.
 void probe_state_monitor()
 {
-  if (probe_get_state()) {
+  if (probe_get_state())
+  {
     sys_probe_state = PROBE_OFF;
     memcpy(sys_probe_position, sys_position, sizeof(sys_position));
-  #ifdef STM32F7XX_ARCH
-    encoderReadInstantDegree(&probe_encoder_degree);
-  #endif // STM32F7XX_ARCH
+#ifdef STM32F7XX_ARCH
+    encoderReadInstantPosition(&probe_encoder_position);
+#endif // STM32F7XX_ARCH
     bit_true(sys_rt_exec_state, EXEC_MOTION_CANCEL);
   }
 }

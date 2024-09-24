@@ -261,7 +261,7 @@ void stepInit(void)
     }
 
     // create tasks
-    xTaskCreate(stepTask, "StepTask", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &xHandleStepTask);
+    xTaskCreate(stepTask, "StepTask", configMINIMAL_STACK_SIZE * 2, NULL, tskIDLE_PRIORITY + 1, &xHandleStepTask);
 }
 
 // handler for step task
@@ -274,7 +274,9 @@ void stepTask(void *pvParameters)
     generalNotification |= (GENERAL_NOTIFICATION_GET_NEW_BUFFER | GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES | GENERAL_NOTIFICATION_FIRST_TIME_START);
 
     // wait notification to calculate pulse data
+    vLoggingPrintf("WaitCalPul\n");
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    vLoggingPrintf("CalPul\n");
 
     // Infinite loop
     for (;;)
@@ -312,7 +314,7 @@ void stepTask(void *pvParameters)
                 vLoggingPrintf("No data available\n");
                 // wait notification to calculate pulse data
                 ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-                vLoggingPrintf("Calculate pulse data\n");
+                vLoggingPrintf("leave no data\n");
             }
         }
 
@@ -828,12 +830,6 @@ void stepWakeUp()
     {
         // clear Force stop flag
         generalNotification &= ~GENERAL_NOTIFICATION_FORCE_STOP;
-
-        // if (!(generalNotification & GENERAL_NOTIFICATION_FIRST_TIME_START))
-        // {
-        //     // start counter
-        //     TIM_START_COUNTER(MASTER_TIM_HANDLE); // timer x axis
-        // }
     }
 
     // start pulse calculation
@@ -857,7 +853,7 @@ void stepGoIdle()
  */
 void stepEnablePulseCalculate()
 {
-    // clear general notification
+    // set general notification
     generalNotification |= GENERAL_NOTIFICATION_CALCULATE_PULSE;
 
     stepNotifyContinuePulseCalculation();
@@ -868,7 +864,7 @@ void stepEnablePulseCalculate()
  */
 void stepDisablePulseCalculate()
 {
-    // set general notification to no more segment which is triggered by stepper.c in grbl
+    // clear general notification
     generalNotification &= ~GENERAL_NOTIFICATION_CALCULATE_PULSE;
 }
 
@@ -1001,15 +997,15 @@ void stepBlockAxis(uint8_t axis)
     stepBlockedAxes |= (1 << axis);
 
     // suspend DMA stream
-    SUSPEND_DMA_STREAM(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
+    // SUSPEND_DMA_STREAM(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
 
     // clear DMA interrupt flag
-    CLEAR_DMA_IT(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
+    // CLEAR_DMA_IT(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
 
     // force output pin to low in output compare mode
     FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
 
-    DMATransferCompletedAxes |= (1 << axis);
+    // DMATransferCompletedAxes |= (1 << axis);
 }
 
 uint8_t stepIsPulseDataExhausted()

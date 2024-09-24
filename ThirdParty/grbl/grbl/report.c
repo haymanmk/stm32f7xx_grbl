@@ -61,7 +61,7 @@ static void report_util_axis_values(float *axis_value)
   }
 }
 #ifdef STM32F7XX_ARCH
-extern encoder_degree_t probe_encoder_degree;
+extern encoder_degree_t probe_encoder_position;
 static void report_util_axis_encoder_values(uint32_t value_addr)
 {
   // print encoder degree/position
@@ -315,7 +315,7 @@ void report_probe_parameters()
   serial_write(':');
 #ifdef STM32F7XX_ARCH
   printPgmString(PSTR("|:"));
-  report_util_axis_encoder_values((uint32_t)&probe_encoder_degree);
+  report_util_axis_encoder_values((uint32_t)&probe_encoder_position);
   serial_write(':');
 #endif // STM32F7XX_ARCH
   print_uint8_base10(sys.probe_succeeded);
