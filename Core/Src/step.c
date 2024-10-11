@@ -543,7 +543,7 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
         if (st->step_outbits & (1 << step_bit))
         {
             // set DEBUG_2_Pin to high ===> signal the start of pulse calculation
-            UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
+            // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
 
             // set this axis to ACTIVE state
             pulseBlock->motion_control_state |= (1 << i);
@@ -565,7 +565,7 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
             }
 
             // set DEBUG_2_Pin to low ===> signal the end of pulse calculation
-            UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
+            // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
         }
     }
 

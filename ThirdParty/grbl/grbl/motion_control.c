@@ -21,6 +21,10 @@
 
 #include "grbl.h"
 
+#if defined(STM32F7XX_ARCH)
+void mc_dwell_timer_callback(TimerHandle_t xTimer);
+#endif
+
 // Execute linear motion in absolute millimeter coordinates. Feed rate given in millimeters/second
 // unless invert_feed_rate is true. Then the feed_rate means that the motion should be completed in
 // (1 minute)/feed_rate time.
@@ -234,7 +238,26 @@ void mc_dwell(float seconds)
     return;
   }
   protocol_buffer_synchronize();
+#if defined(AVR_ARCH)
   delay_sec(seconds, DELAY_MODE_DWELL);
+#elif defined(STM32F7XX_ARCH)
+  // set the EXEC_DWELL flag
+  sys_rt_exec_user_defined |= EXEC_DWELL;
+  // create freeRtos timer
+  TimerHandle_t xTimer = xTimerCreate("DwellTimer", pdMS_TO_TICKS(seconds * 1000), pdFALSE, (void *)0, mc_dwell_timer_callback);
+
+  // set debug pin, DEBUG_2_Pin
+  UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
+
+  // check if the timer was created
+  if (xTimer == NULL) {
+    FreeRTOS_debug_printf(("mc_dwell: Timer creation failed!"));
+    sys_rt_exec_user_defined &= ~EXEC_DWELL;
+
+    // reset debug pin, DEBUG_2_Pin
+    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
+  }
+#endif
 }
 
 // Perform homing cycle to locate and set machine zero. Only '$H' executes this command.
@@ -482,3 +505,15 @@ void mc_reset()
     }
   }
 }
+
+#if defined(STM32F7XX_ARCH)
+// Timer callback function for the dwell timer
+void mc_dwell_timer_callback(TimerHandle_t xTimer)
+{
+  // reset the EXEC_DWELL flag
+  sys_rt_exec_user_defined &= ~EXEC_DWELL;
+
+  // reset debug pin, DEBUG_2_Pin
+  UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
+}
+#endif

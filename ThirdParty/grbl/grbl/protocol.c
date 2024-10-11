@@ -505,7 +505,11 @@ void protocol_exec_rt_system()
           {
             // Start cycle only if queued motions exist in planner buffer and the motion is not canceled.
             sys.step_control = STEP_CONTROL_NORMAL_OP; // Restore step control to normal operation
+          #if defined(AVR_ARCH)
             if (plan_get_current_block() && bit_isfalse(sys.suspend, SUSPEND_MOTION_CANCEL))
+          #elif defined(STM32F7XX_ARCH)
+            if (plan_get_current_block() && (bit_isfalse(sys.suspend, SUSPEND_MOTION_CANCEL) || bit_isfalse(sys_rt_exec_user_defined, EXEC_DWELL)))
+          #endif
             {
               sys.suspend = SUSPEND_DISABLE; // Break suspend state.
               sys.state = STATE_CYCLE;
