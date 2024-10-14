@@ -38,6 +38,9 @@ parser_block_t gc_block;
 
 #define FAIL(status) return(status);
 
+#ifdef STM32F7XX_ARCH
+  static uint8_t current_realtime_output_pin_status = 0;
+#endif
 
 void gc_init()
 {
@@ -833,12 +836,22 @@ uint8_t gc_execute_line(char *line)
 
   // [21. Program flow ]: No error checks required.
 
+#ifdef STM32F7XX_ARCH
   // [Control output pins]
   if (bit_istrue(command_words,bit( MODAL_GROUP_M62))) {
     // [M62 Errors]: P word missing. P is negative (done.) P is greater than max pin value.
     if (bit_isfalse(value_words,bit(WORD_P))) { FAIL(STATUS_GCODE_VALUE_WORD_MISSING); } // [P word missing]
     bit_false(value_words,bit(WORD_P));
   }
+
+  // [Control realtime output pins]
+  if (axis_command == AXIS_COMMAND_MOTION_MODE) {
+    if (bit_istrue(value_words, bit(WORD_L))) {
+      gc_block.values.l = 1 << (gc_block.values.l);
+      bit_false(value_words, bit(WORD_L));
+    }
+  }
+#endif
 
   // [0. Non-specific error-checks]: Complete unused value words check, i.e. IJK used when in arc
   // radius mode, or axis words that aren't used in the block.
@@ -982,6 +995,14 @@ uint8_t gc_execute_line(char *line)
       // NOTE: All output state changes are synced.
       io_output_sync(gc_block.values.p, gc_block.modal.output_sync);
     }
+  }
+
+  // [Set realtime output pin]:
+  // Example: G01 X10 Y10 F1000 L1, turn ON real time output pin, and L0 turn OFF real time output pin
+  if (axis_command == AXIS_COMMAND_MOTION_MODE) {
+    if (gc_block.values.l == 1) current_realtime_output_pin_status = 0;
+    else if (gc_block.values.l == 2) current_realtime_output_pin_status = 1;
+    pl_data->realtime_output_pin_status = current_realtime_output_pin_status;
   }
 #endif
 

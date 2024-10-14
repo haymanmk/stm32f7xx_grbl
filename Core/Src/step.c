@@ -65,6 +65,10 @@ typedef struct
 #ifdef VARIABLE_SPINDLE
     uint8_t is_pwm_rate_adjusted; // Tracks motions that require constant laser power/rate
 #endif
+#ifdef STM32F7XX_ARCH
+  uint8_t realtime_output_pin_status; // Tracks the realtime output pin status for the block,
+                                      // control output pin and axial motion at the same time.
+#endif
 } st_block_t;
 
 // Primary stepper segment ring buffer. Contains small, short line segments for the stepper
@@ -120,6 +124,7 @@ typedef struct
     pulse_t pulse_data[NUM_DIMENSIONS];
     uint8_t motion_control_state;
     IO_TYPE dir_outbits;
+    uint8_t realtime_output_pin_status;
 } pulse_block_t;
 
 /**
@@ -385,6 +390,12 @@ void stepTask(void *pvParameters)
                 }
             }
 
+            // set realtime output pin status
+            UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, pulseBlock->realtime_output_pin_status);
+
+            // set DEBUG_2_Pin to realtime output pin status
+            UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, pulseBlock->realtime_output_pin_status);
+
             // update current motion control state by the motion_control_state coming with the pulse data
             currentStepperState = pulseBlock->motion_control_state;
 
@@ -526,6 +537,11 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
         getNewBuffer = 0;
     }
 
+    if (st->step_outbits) {
+        // set realtime output pin status
+        pulseBlock->realtime_output_pin_status = st->exec_block->realtime_output_pin_status;
+    }
+
     // loop through all axes
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
@@ -644,12 +660,15 @@ void stepUpdateDMABuffer(uint32_t address)
         }
     }
 
+    // set real-time output pin status
+    UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, pulseBlock->realtime_output_pin_status);
+
+    // set DEBUG_2_Pin to denote the status of real-time output pin
+    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, pulseBlock->realtime_output_pin_status);
+
     /**
      * Update Variables
      */
-
-    // set PD7 to low ===> signal the end of updating DMA buffer
-    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
 }
 
 /* =========================================================== */

@@ -370,6 +370,9 @@
   #define USER_OUTPUT_2_BIT       2  // PF2
   #define USER_OUTPUT_3_BIT       3  // PF3
 
+  #define REALTIME_OUTPUT_GPIO_GROUP  USER_OUTPUT_GPIO_GROUP
+  #define REALTIME_OUTPUT_PIN     USER_OUTPUT_0_BIT
+
 #endif // CPU_MAP_STM32F7XX
 
 #endif

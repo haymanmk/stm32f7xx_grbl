@@ -236,7 +236,7 @@ void protocol_buffer_synchronize()
   } while (plan_get_current_block() || (sys.state == STATE_CYCLE));
 #elif defined(STM32F7XX_ARCH)
     protocol_auto_cycle_start();
-  } while (plan_get_current_block() || !stepIsPulseDataExhausted() || (sys.state == STATE_CYCLE));
+  } while (plan_get_current_block() || !stepIsPulseDataExhausted() || (sys.state == STATE_CYCLE) || (sys_rt_exec_user_defined & EXEC_DWELL));
 #endif
 }
 
@@ -508,7 +508,7 @@ void protocol_exec_rt_system()
           #if defined(AVR_ARCH)
             if (plan_get_current_block() && bit_isfalse(sys.suspend, SUSPEND_MOTION_CANCEL))
           #elif defined(STM32F7XX_ARCH)
-            if (plan_get_current_block() && (bit_isfalse(sys.suspend, SUSPEND_MOTION_CANCEL) || bit_isfalse(sys_rt_exec_user_defined, EXEC_DWELL)))
+            if (plan_get_current_block() && (bit_isfalse(sys.suspend, SUSPEND_MOTION_CANCEL) && bit_isfalse(sys_rt_exec_user_defined, EXEC_DWELL)))
           #endif
             {
               sys.suspend = SUSPEND_DISABLE; // Break suspend state.

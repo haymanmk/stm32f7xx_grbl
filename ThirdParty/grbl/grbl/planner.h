@@ -83,6 +83,10 @@ typedef struct {
     // Stored spindle speed data used by spindle overrides and resuming methods.
     float spindle_speed;    // Block spindle speed. Copied from pl_line_data.
   #endif
+  #ifdef STM32F7XX_ARCH
+    // Realtime output pin status for the block, control output pin and axial motion at the same time.
+    uint8_t realtime_output_pin_status;
+  #endif
 } plan_block_t;
 
 
@@ -93,6 +97,9 @@ typedef struct {
   uint8_t condition;        // Bitflag variable to indicate planner conditions. See defines above.
   #ifdef USE_LINE_NUMBERS
     int32_t line_number;    // Desired line number to report when executing.
+  #endif
+  #ifdef STM32F7XX_ARCH
+    uint8_t realtime_output_pin_status; // Realtime output pin status for the block, control output pin and axial motion at the same time.
   #endif
 } plan_line_data_t;
 
