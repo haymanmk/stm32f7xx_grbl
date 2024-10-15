@@ -66,8 +66,8 @@ typedef struct
     uint8_t is_pwm_rate_adjusted; // Tracks motions that require constant laser power/rate
 #endif
 #ifdef STM32F7XX_ARCH
-  uint8_t realtime_output_pin_status; // Tracks the realtime output pin status for the block,
-                                      // control output pin and axial motion at the same time.
+    uint8_t realtime_output_pin_status; // Tracks the realtime output pin status for the block,
+                                        // control output pin and axial motion at the same time.
 #endif
 } st_block_t;
 
@@ -391,7 +391,7 @@ void stepTask(void *pvParameters)
             }
 
             // set realtime output pin status
-            UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, pulseBlock->realtime_output_pin_status);
+            UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, (pulseBlock->realtime_output_pin_status ^ 0x01));
 
             // set DEBUG_2_Pin to realtime output pin status
             UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, pulseBlock->realtime_output_pin_status);
@@ -537,7 +537,8 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
         getNewBuffer = 0;
     }
 
-    if (st->step_outbits) {
+    if (st->step_outbits)
+    {
         // set realtime output pin status
         pulseBlock->realtime_output_pin_status = st->exec_block->realtime_output_pin_status;
     }
@@ -661,7 +662,7 @@ void stepUpdateDMABuffer(uint32_t address)
     }
 
     // set real-time output pin status
-    UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, pulseBlock->realtime_output_pin_status);
+    UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, (pulseBlock->realtime_output_pin_status ^ 0x01));
 
     // set DEBUG_2_Pin to denote the status of real-time output pin
     UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, pulseBlock->realtime_output_pin_status);
