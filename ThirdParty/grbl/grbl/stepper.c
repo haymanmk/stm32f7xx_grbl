@@ -505,7 +505,7 @@ void stepper_pulse_generation_isr()
       }
       else if (sys.state == STATE_JOG)
       {
-        if (plan_get_current_block() != NULL)
+        if (plan_get_current_block() != NULL && !(sys.suspend & SUSPEND_JOG_CANCEL))
         {
           return;
         }
