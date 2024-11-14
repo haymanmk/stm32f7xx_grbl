@@ -867,6 +867,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 #ifdef INVERT_LIMIT_PIN_MASK
     pinState ^= INVERT_LIMIT_PIN_MASK;
 #endif
+
+    // check if limit sensors are inverted by settings
+    // if so, invert the pin state to detect the limit
+    if (settings.flags & BITFLAG_INVERT_LIMIT_PINS)
+    {
+      pinState ^= LIMIT_MASK;
+    }
+
     if ((pinState & GPIO_Pin) && !(stepBlockedAxes & (1 << GET_AXIS_FROM_GPIO_PIN(GPIO_Pin))))
       limits_isr(GPIO_Pin);
   }

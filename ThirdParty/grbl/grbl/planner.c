@@ -324,6 +324,9 @@ uint8_t plan_buffer_line(float *target, plan_line_data_t *pl_data)
   #ifdef USE_LINE_NUMBERS
     block->line_number = pl_data->line_number;
   #endif
+  #ifdef STM32F7XX_ARCH
+    block->realtime_output_pin_status = pl_data->realtime_output_pin_status;
+  #endif
 
   // Compute and store initial move distance data.
   int32_t target_steps[N_AXIS], position_steps[N_AXIS];

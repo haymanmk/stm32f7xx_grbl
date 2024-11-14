@@ -73,16 +73,17 @@ void limits_init()
 
   // set gpio pins
   GPIO_InitStruct.Pin = LIMIT_MASK;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
 
   // check if the limit pins are inverted; Note: by default, limit pins are active low.
-  if (bit_isfalse(settings.flags, BITFLAG_INVERT_LIMIT_PINS))
-  {
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-  }
-  else
-  {
-    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-  }
+  // if (bit_isfalse(settings.flags, BITFLAG_INVERT_LIMIT_PINS))
+  // {
+  //   GPIO_InitStruct.Pull = GPIO_PULLUP;
+  // }
+  // else
+  // {
+  //   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  // }
 
   // Set the limit pins as input or input interrupt depending on the settings
   if (bit_istrue(settings.flags, BITFLAG_HARD_LIMIT_ENABLE))
