@@ -83,6 +83,10 @@ error "AMASS must have 1 or more levels to operate correctly."
 #ifdef VARIABLE_SPINDLE
   uint8_t is_pwm_rate_adjusted; // Tracks motions that require constant laser power/rate
 #endif
+#ifdef STM32F7XX_ARCH
+  uint8_t realtime_output_pin_status; // Tracks the realtime output pin status for the block,
+                                      // control output pin and axial motion at the same time.
+#endif
 } st_block_t;
 static st_block_t st_block_buffer[SEGMENT_BUFFER_SIZE - 1];
 
@@ -966,6 +970,9 @@ void st_prep_buffer()
         // segment buffer finishes the prepped block, but the stepper ISR is still executing it.
         st_prep_block = &st_block_buffer[prep.st_block_index];
         st_prep_block->direction_bits = pl_block->direction_bits;
+#ifdef STM32F7XX_ARCH
+        st_prep_block->realtime_output_pin_status = pl_block->realtime_output_pin_status;
+#endif
 #ifdef ENABLE_DUAL_AXIS
 #if (DUAL_AXIS_SELECT == X_AXIS)
         if (st_prep_block->direction_bits & (1 << X_DIRECTION_BIT))

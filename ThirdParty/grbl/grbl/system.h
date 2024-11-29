@@ -75,7 +75,8 @@
 
 #if defined(STM32F7XX_ARCH)
   // User defined bit maps. Realtime bitflags to control user-defined features.
-  #define EXEC_READ_IO_STATUS  bit(0)
+  #define EXEC_READ_IO_STATUS   bit(0)
+  #define EXEC_DWELL            bit(1) // execute a dwell command, G04 Pxxx in seconds.
 #endif
 
 // Define system state bit map. The state variable primarily tracks the individual functions
