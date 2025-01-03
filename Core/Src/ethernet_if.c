@@ -1,25 +1,77 @@
 #include <stdio.h>
-#include "main.h"
+#include "stm32f7xx_grbl.h"
 #include "ethernet_if.h"
 #include "encoder.h"
+#include "grbl.h"
 
 #define BUFFER_SIZE 512
+#define CONNECTION_CREATED_MSK 1
 
 extern NetworkInterface_t *pxSTM32Fxx_FillInterfaceDescriptor(BaseType_t xEMACIndex,
                                                               NetworkInterface_t *pxInterface);
 static void prvCreateTCPServerSocketTasks(void *pvParameters);
 static void prvEchoClientRxTask(void *pvParameters);
+static void prvSerialTask(void *pvParameters);
+static void prvBlinkLED(void *pvParameters);
 
 NetworkInterface_t xInterfaces[1];
 struct xNetworkEndPoint xEndPoints[1];
 uint8_t socketShutdownTimeout = 0;
-extern TaskHandle_t xHandleUpdatePulseData;
-extern volatile uint32_t pulseFrequency;
+TaskHandle_t createServerSocketTaskHandle;
+TaskHandle_t echoClientRxTaskHandle;
+TaskHandle_t serialTaskHandle;
+static SemaphoreHandle_t connectionCreatedSemaphoreHandle;
+SemaphoreHandle_t deleteTaskSemaphoreHandle;
+static uint16_t listeningPort = 0;
 
 BaseType_t tcp_server_init()
 {
+    /* Initialize Semaphore handler to protect the critical section of
+       safely shutting down connection */
+    connectionCreatedSemaphoreHandle = xSemaphoreCreateBinary();
+
     /* Initialise the interface descriptor for WinPCap for example. */
     pxSTM32Fxx_FillInterfaceDescriptor(0, &(xInterfaces[0]));
+
+    uint8_t IPAddr[4] = {
+        settings.ip_address_0,
+        settings.ip_address_1,
+        settings.ip_address_2,
+        settings.ip_address_3};
+    uint8_t GatewayAddr[4] = {
+        settings.ip_address_0,
+        settings.ip_address_1,
+        settings.ip_address_2,
+        1};
+    listeningPort = LISTENING_PORT + settings.tcp_port;
+
+    // check if USER Button is continuously pressed over 5 seconds,
+    // then use the default IP address and port
+    if (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin) == GPIO_PIN_SET)
+    {
+        // wait for 5 seconds
+        vTaskDelay(pdMS_TO_TICKS(5000));
+
+        // check if USER Button is still pressed
+        if (HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin) == GPIO_PIN_SET)
+        {
+            // use the default IP address and port
+            IPAddr[0] = 172;
+            IPAddr[1] = 16;
+            IPAddr[2] = 0;
+            IPAddr[3] = 10;
+
+            GatewayAddr[0] = 172;
+            GatewayAddr[1] = 16;
+            GatewayAddr[2] = 0;
+            GatewayAddr[3] = 1;
+
+            listeningPort = LISTENING_PORT;
+
+            // start the LED blinking task
+            xTaskCreate(prvBlinkLED, "BlinkLED", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+        }
+    }
 
     FreeRTOS_FillEndPoint(&(xInterfaces[0]), &(xEndPoints[0]), IPAddr,
                           NetMask, GatewayAddr, DNSAddr, MACAddr);
@@ -34,6 +86,7 @@ BaseType_t tcp_server_init()
        are created in the vApplicationIPNetworkEventHook() hook function
        below.  The hook function is called when the network connects. */
     FreeRTOS_IPInit_Multi();
+
     return SUCCESS;
 }
 
@@ -109,7 +162,6 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef *ethHandle)
     }
 }
 
-
 void vApplicationIPNetworkEventHook_Multi(eIPCallbackEvent_t eNetworkEvent,
                                           struct xNetworkEndPoint *pxEndPoint)
 {
@@ -129,7 +181,7 @@ void vApplicationIPNetworkEventHook_Multi(eIPCallbackEvent_t eNetworkEvent,
 
             xTasksAlreadyCreated = pdTRUE;
 
-            vStartSimpleTCPServerTasks(2 * configMINIMAL_STACK_SIZE, tskIDLE_PRIORITY);
+            vStartSimpleTCPServerTasks(4 * configMINIMAL_STACK_SIZE, tskIDLE_PRIORITY);
         }
     }
     /* Print out the network configuration, which may have come from a DHCP
@@ -160,7 +212,7 @@ static uint16_t usUsedStackSize = 0;
 
 void vStartSimpleTCPServerTasks(uint16_t usStackSize, UBaseType_t uxPriority)
 {
-    xTaskCreate(prvCreateTCPServerSocketTasks, "TCPServerListener", usStackSize, NULL, uxPriority, NULL);
+    xTaskCreate(prvCreateTCPServerSocketTasks, "TCPServerListener", usStackSize, NULL, uxPriority, &createServerSocketTaskHandle);
 
     /* Remember the requested stack size so it can be re-used by the server
      * listening task when it creates tasks to handle connections. */
@@ -173,7 +225,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
     Socket_t xListeningSocket, xConnectedSocket;
     socklen_t xSize = sizeof(xClient);
     static const TickType_t xReceiveTimeOut = portMAX_DELAY;
-    const BaseType_t xBacklog = 10;
+    const BaseType_t xBacklog = 1;
 
     /* Attempt to open the socket. */
     xListeningSocket = FreeRTOS_socket(FREERTOS_AF_INET4,    /* Or FREERTOS_AF_INET6 for IPv6. */
@@ -201,7 +253,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
 
     /* Set the listening port to 10000. */
     // xBindAddress.sin_address = (IP_Address_t)FreeRTOS_inet_addr_quick(0, 0, 0, 0);
-    xBindAddress.sin_port = (uint16_t)LISTENING_PORT;
+    xBindAddress.sin_port = listeningPort;
     xBindAddress.sin_port = FreeRTOS_htons(xBindAddress.sin_port);
     xBindAddress.sin_family = FREERTOS_AF_INET;
 
@@ -214,23 +266,126 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
 
     for (;;)
     {
-        /* Wait for incoming connections. */
-        xConnectedSocket = FreeRTOS_accept(xListeningSocket, &xClient, &xSize);
-        configASSERT(xConnectedSocket != FREERTOS_INVALID_SOCKET);
+        if (xSocketValid(xListeningSocket) == pdTRUE)
+        {
+            /* Wait for incoming connections. */
+            xConnectedSocket = FreeRTOS_accept(xListeningSocket, &xClient, &xSize);
+            configASSERT(xConnectedSocket != FREERTOS_INVALID_SOCKET);
 
-        /* Spawn a RTOS task to handle the connection. */
-        xTaskCreate(prvEchoClientRxTask,
-                    "EchoServer",
-                    usUsedStackSize,
-                    (void *)xConnectedSocket,
-                    tskIDLE_PRIORITY,
-                    NULL);
+            /* Give semaphore a count to represent there is a connection that can be shut down. */
+            xSemaphoreGive(connectionCreatedSemaphoreHandle);
+
+            /* Spawn a RTOS task to handle the connection. */
+            xTaskCreate(prvEchoClientRxTask,
+                        "EchoServer",
+                        usUsedStackSize,
+                        (void *)xConnectedSocket,
+                        tskIDLE_PRIORITY + 1,
+                        &echoClientRxTaskHandle);
+
+            // Create the serial task which is an interface between the serial port and the ethernet
+            xTaskCreate(prvSerialTask,
+                        "SerialTask",
+                        configMINIMAL_STACK_SIZE * 2,
+                        (void *)xConnectedSocket,
+                        tskIDLE_PRIORITY + 1,
+                        &serialTaskHandle);
+
+            // wait here until the connection is closed
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+            // check if the task handle is valid
+            if (echoClientRxTaskHandle != NULL)
+            {
+                // delete the task
+                vTaskDelete(echoClientRxTaskHandle);
+                echoClientRxTaskHandle = NULL;
+            }
+            if (serialTaskHandle != NULL)
+            {
+                // delete the task
+                vTaskDelete(serialTaskHandle);
+                serialTaskHandle = NULL;
+            }
+
+            // create binary semaphore to wait for idle task to delete the task
+            deleteTaskSemaphoreHandle = xSemaphoreCreateBinary();
+
+            if (deleteTaskSemaphoreHandle != NULL)
+            {
+                // wait for idle task to delete the task and free the memory
+                xSemaphoreTake(deleteTaskSemaphoreHandle, portMAX_DELAY);
+                // delete semaphore
+                vSemaphoreDelete(deleteTaskSemaphoreHandle);
+                deleteTaskSemaphoreHandle = NULL;
+            }
+
+            // clear notify value in case there is any task giving notification during the wait
+            ulTaskNotifyValueClear(NULL, 0xffffffff);
+        }
     }
 }
 
 void vTimeoutCallback(TimerHandle_t xTimer)
 {
     socketShutdownTimeout = 1;
+}
+
+void safelyShutdownSocket(Socket_t xSocket)
+{
+    // beginning of critical section
+    if (xSemaphoreTake(connectionCreatedSemaphoreHandle, pdMS_TO_TICKS(500)) == pdFALSE)
+        return;
+
+    vLoggingPrintf("Shutting down socket\n");
+    // shutdown the socket
+    FreeRTOS_shutdown(xSocket, FREERTOS_SHUT_RDWR);
+
+    // Start a timeout watchdog to avoid blocking the task indefinitely
+    socketShutdownTimeout = 0;
+    TimerHandle_t xTimer = xTimerCreate("SocketShutdownTimer", pdMS_TO_TICKS(1000), pdFALSE, (void *)0, vTimeoutCallback);
+
+    if (xTimer == NULL)
+    {
+        FreeRTOS_debug_printf(("Failed to create timer\n"));
+    }
+
+    // start timer
+    if (xTimerStart(xTimer, 0) != pdPASS)
+    {
+        FreeRTOS_debug_printf(("Failed to start timer\n"));
+    }
+
+    while (FreeRTOS_recv(xSocket, NULL, 0, 0) >= 0 && !socketShutdownTimeout)
+    {
+        /* Wait for shutdown to complete.  If a receive block time is used then
+        this delay will not be necessary as FreeRTOS_recv() will place the RTOS task
+        into the Blocked state anyway. */
+        vTaskDelay(pdMS_TO_TICKS(250));
+
+        /* Note - real applications should implement a timeout here, not just
+        loop forever. */
+    }
+
+    // reset timer
+    if (xTimerReset(xTimer, 0) != pdPASS)
+    {
+        FreeRTOS_debug_printf(("Failed to reset timer\n"));
+    }
+
+    // delete timer; note: this step is important to avoid memory leak
+    if (xTimerDelete(xTimer, 0) != pdPASS)
+    {
+        FreeRTOS_debug_printf(("Failed to delete timer\n"));
+    }
+
+    /* Shutdown is complete and the socket can be safely closed. */
+    FreeRTOS_closesocket(xSocket);
+    xSocket = NULL;
+
+    vLoggingPrintf("Socket shutdown complete\n");
+
+    // end of critical section
 }
 
 uint8_t isDigit(char c)
@@ -240,47 +395,16 @@ uint8_t isDigit(char c)
 
 void prvProcessData(char *cRxedData, BaseType_t lBytesReceived, Socket_t xConnectedSocket)
 {
-    FreeRTOS_debug_printf(("Received data: %s\n", cRxedData));
+    FreeRTOS_debug_printf(("Received data: %.*s\n", lBytesReceived, cRxedData));
 
-    if (cRxedData[0] != '$')
-        return;
+    BaseType_t i = 0;
 
-    BaseType_t i = 1;
-
-    for (i; i < lBytesReceived; i++)
+    for (; i < lBytesReceived; i++)
     {
-        switch (cRxedData[i])
-        {
-        case 'f':
-        case 'F':
-            i++;
-            pulseFrequency = 0;
-            while (cRxedData[i] != '\n' && i < lBytesReceived)
-            {
-                if (isDigit(cRxedData[i]))
-                {
-                    // cRxedData[i] is an ASCII code number
-                    pulseFrequency = pulseFrequency * 10 + (cRxedData[i] - '0');
-                }
-                i++;
-            }
-            FreeRTOS_debug_printf(("Pulse frequency: %d\n", pulseFrequency));
-            xTaskNotifyGive(xHandleUpdatePulseData);
-
-            break;
-        case 'p':
-        case 'P':
-        {
-            char str[12] = {NULL}; // Buffer big enough for 32-bit number. 10 digits max + '\0'
-            sprintf(str, "%ld", readDegree());
-            FreeRTOS_send(xConnectedSocket, str, sizeof(str), 0);
-            break;
-        }
-        default:
-            // Echo back the received data
-            // FreeRTOS_send(xConnectedSocket, cRxedData, lBytesReceived, 0);
-            break;
-        }
+        /**
+         * Process the received data
+         */
+        serial_rx_irq(cRxedData[i]);
     }
 }
 
@@ -315,7 +439,7 @@ static void prvEchoClientRxTask(void *pvParameters)
         {
             /* Error (maybe the connected socket already shut down the socket?).
             Attempt graceful shutdown. */
-            FreeRTOS_shutdown(xSocket, FREERTOS_SHUT_RDWR);
+            FreeRTOS_debug_printf(("Error on receive\n"));
             break;
         }
     }
@@ -323,43 +447,94 @@ static void prvEchoClientRxTask(void *pvParameters)
     /* The RTOS task will get here if an error is received on a read.  Ensure the
     socket has shut down (indicated by FreeRTOS_recv() returning a -pdFREERTOS_ERRNO_EINVAL
     error before closing the socket). */
+    if (xSocket)
+        safelyShutdownSocket(xSocket);
 
-    // Start a timeout watchdog to avoid blocking the task indefinitely
-    socketShutdownTimeout = 0;
-    TimerHandle_t xTimer = xTimerCreate("SocketShutdownTimer", pdMS_TO_TICKS(1000), pdFALSE, (void *)0, vTimeoutCallback);
+    /* reset serial function in GRBL */
+    serial_init();
 
-    if (xTimer == NULL)
-    {
-        FreeRTOS_debug_printf(("Failed to create timer\n"));
-    }
+    // clear task handle
+    echoClientRxTaskHandle = NULL;
 
-    // start timer
-    if (xTimerStart(xTimer, 0) != pdPASS)
-    {
-        FreeRTOS_debug_printf(("Failed to start timer\n"));
-    }
-
-    while (FreeRTOS_recv(xSocket, NULL, 0, 0) >= 0 && !socketShutdownTimeout)
-    {
-        /* Wait for shutdown to complete.  If a receive block time is used then
-        this delay will not be necessary as FreeRTOS_recv() will place the RTOS task
-        into the Blocked state anyway. */
-        vTaskDelay(pdMS_TO_TICKS(250));
-
-        /* Note - real applications should implement a timeout here, not just
-        loop forever. */
-    }
-
-    // reset timer
-    if (xTimerReset(xTimer, 0) != pdPASS)
-    {
-        FreeRTOS_debug_printf(("Failed to reset timer\n"));
-    }
-
-    /* Shutdown is complete and the socket can be safely closed. */
-    FreeRTOS_closesocket(xSocket);
+    // notify server socket task to delete the task
+    xTaskNotifyGive(createServerSocketTaskHandle);
 
     /* Must not drop off the end of the RTOS task - delete the RTOS task. */
+    // delete current task
+    vTaskDelete(NULL);
+}
+
+static void prvSerialTask(void *pvParameters)
+{
+    Socket_t xSocket = (Socket_t)pvParameters;
+    char str[105] = {'\0'};
+    uint8_t strIndex = 0;
+
+    for (;;)
+    {
+        // Wait for a notification from serial task in serial.c of grbl
+        ulTaskNotifyTake(pdFALSE, portMAX_DELAY); // decrement the notification count
+
+        /**
+         * TODO: Implement serial task
+         * - check if ethernet is ready to send data
+         * - concatenate the data to be sent until a newline character, '\n', is received
+         */
+        uint8_t chr = serial_tx_irq();
+
+        // concatenate the data to be sent until a newline character, '\n', is received
+        str[strIndex] = chr;
+
+        if (++strIndex >= sizeof(str))
+        {
+            FreeRTOS_debug_printf(("Buffer overflow\n"));
+            strIndex = 0;
+        }
+
+        // Check if the character is a newline character
+        if (chr != '\n')
+        {
+            continue;
+        }
+
+        // Send the data
+        BaseType_t bytesSent = FreeRTOS_send(xSocket, str, strIndex, 0);
+
+        // Check if the data was sent successfully
+        if (bytesSent > 0)
+        {
+            FreeRTOS_debug_printf(("Data sent: %s\n", str));
+        }
+        else if (bytesSent < 0)
+        {
+            FreeRTOS_debug_printf(("Failed to send data\n"));
+            break;
+        }
+
+        // Clear the string buffer
+        memset(str, '\0', sizeof(str));
+
+        // Reset the string index
+        strIndex = 0;
+    }
+
+    /**
+     * The RTOS task will get here if an error is received on a read.
+     * Ensure the socket has shut down before leaving the task.
+     */
+    if (xSocket)
+        safelyShutdownSocket(xSocket);
+
+    /* reset serial function in GRBL */
+    serial_init();
+
+    // clear task handle
+    serialTaskHandle = NULL;
+
+    // notify server socket task to delete the task
+    xTaskNotifyGive(createServerSocketTaskHandle);
+
+    // delete current task
     vTaskDelete(NULL);
 }
 
@@ -370,5 +545,27 @@ void HAL_ETH_ErrorCallback(ETH_HandleTypeDef *heth)
         /* clear interrupt flag */
         __HAL_ETH_DMA_CLEAR_FLAG(heth, ETH_DMA_FLAG_AIS);
         FreeRTOS_debug_printf(("ETH DMA Error: Abnormal interrupt summary\n"));
+    }
+}
+
+static void prvBlinkLED(void *pvParameters)
+{
+    for (;;)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            // Turn on the LEDs, LD1 and LD2
+            HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+            HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+            vTaskDelay(pdMS_TO_TICKS(200));
+
+            // Turn off the LEDs, LD1 and LD2
+            HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+
+        // Delay for 1.5 seconds
+        vTaskDelay(pdMS_TO_TICKS(800));
     }
 }

@@ -1,6 +1,25 @@
 {
     "files.associations": {
         "pack_struct_start.h": "c",
-        "encoder.h": "c"
+        "encoder.h": "c",
+        "ethernet_if.h": "c",
+        "stm32f7xx_grbl.h": "c",
+        "main.h": "c",
+        "stm32f7xx_hal.h": "c",
+        "grbl.h": "c",
+        "stm32f7xx_hal_conf.h": "c",
+        "stm32f7xx.h": "c",
+        "stm32f7xx_gpio_ex.h": "c",
+        "serial.h": "c",
+        "stm32f7xx_timer_extension.h": "c",
+        "limits.h": "c",
+        "nuts_bolts.h": "c",
+        "step.h": "c",
+        "cpu_map.h": "c",
+        "string.h": "c",
+        "eeprom.h": "c",
+        "utils.h": "c",
+        "stm32f7xx_flash_ex.h": "c",
+        "timers.h": "c"
     }
 }
