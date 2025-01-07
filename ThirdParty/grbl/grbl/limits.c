@@ -23,6 +23,8 @@
 
 #ifdef STM32F7XX_ARCH
 uint8_t limitSwitchTriggered = 0; // bit 0: X, bit 1: Y, bit 2: Z
+// Set search mode with approach at seek rate to quickly engage the specified cycle_mask limit switches.
+bool approach = true;
 #endif                            // STM32F7XX_ARCH
 
 // Homing axis search distance multiplier. Computed by this value times the cycle travel.
@@ -204,7 +206,9 @@ void limits_isr(uint16_t GPIO_Pin)
       axis = Z_AXIS;
     }
 
-    if ((axis < NUM_DIMENSIONS) && (sys.homing_axis_lock & get_step_pin_mask(axis)))
+    if ((axis < NUM_DIMENSIONS)
+        && ((sys.homing_axis_lock & get_step_pin_mask(axis)) > 0)
+        && approach)
     {
       // block the axis
       stepBlockAxis(axis);
@@ -331,8 +335,10 @@ void limits_go_home(uint8_t cycle_mask)
   step_pin_dual = (1 << DUAL_STEP_BIT);
 #endif
 
+#if defined(AVR_ARCH)
   // Set search mode with approach at seek rate to quickly engage the specified cycle_mask limit switches.
   bool approach = true;
+#endif
   float homing_rate = settings.homing_seek_rate;
 
   IO_TYPE axislock;
