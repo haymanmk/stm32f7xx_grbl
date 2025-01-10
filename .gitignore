@@ -1,2 +1,5 @@
 build/
 Debug/
+.metadata/
+.settings/
+stm32f7xx_grbl.launch

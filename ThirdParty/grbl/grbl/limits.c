@@ -338,6 +338,9 @@ void limits_go_home(uint8_t cycle_mask)
 #if defined(AVR_ARCH)
   // Set search mode with approach at seek rate to quickly engage the specified cycle_mask limit switches.
   bool approach = true;
+#elif defined(STM32F7XX_ARCH)
+  // set serach mode with approach at seek rate to quickly engage the specified cycle_mask limit switches.
+  approach = true;
 #endif
   float homing_rate = settings.homing_seek_rate;
 
