@@ -58,6 +58,12 @@ const __flash settings_t defaults = {
     .ip_address_2 = DEFAULT_IP_ADDRESS_2,
     .ip_address_3 = DEFAULT_IP_ADDRESS_3,
     .tcp_port = DEFAULT_TCP_PORT,
+    .mac_address_0 = DEFAULT_MAC_ADDRESS_0,
+    .mac_address_1 = DEFAULT_MAC_ADDRESS_1,
+    .mac_address_2 = DEFAULT_MAC_ADDRESS_2,
+    .mac_address_3 = DEFAULT_MAC_ADDRESS_3,
+    .mac_address_4 = DEFAULT_MAC_ADDRESS_4,
+    .mac_address_5 = DEFAULT_MAC_ADDRESS_5,
     .mm_per_rev[X_AXIS] = DEFAULT_X_MM_PER_REV,
     .mm_per_rev[Y_AXIS] = DEFAULT_Y_MM_PER_REV,
     .mm_per_rev[Z_AXIS] = DEFAULT_Z_MM_PER_REV,
@@ -121,6 +127,19 @@ void settings_restore(uint8_t restore_flag)
   if (restore_flag & SETTINGS_RESTORE_DEFAULTS)
   {
     settings = defaults;
+  #ifdef STM32F7XX_ARCH
+    // setting default MAC address
+    // create default MAC address from STM32F7 unique ID
+    uint32_t uid_0 = HAL_GetUIDw0();
+    uint32_t uid_1 = HAL_GetUIDw1();
+
+    settings.mac_address_0 = (uid_0 >> 24) & 0xFF;
+    settings.mac_address_1 = (uid_0 >> 16) & 0xFF;
+    settings.mac_address_2 = (uid_0 >> 8) & 0xFF;
+    settings.mac_address_3 = (uid_1 >> 24) & 0xFF;
+    settings.mac_address_4 = (uid_1 >> 16) & 0xFF;
+    settings.mac_address_5 = (uid_1 >> 8) & 0xFF;
+  #endif
     write_global_settings();
   }
 
@@ -440,6 +459,24 @@ uint8_t settings_store_global_setting(uint8_t parameter, float value)
       break;
     case 37:
       settings.tcp_port = int_value;
+      break;
+    case 38:
+      settings.mac_address_0 = int_value;
+      break;
+    case 39:
+      settings.mac_address_1 = int_value;
+      break;
+    case 40:
+      settings.mac_address_2 = int_value;
+      break;
+    case 41:
+      settings.mac_address_3 = int_value;
+      break;
+    case 42:
+      settings.mac_address_4 = int_value;
+      break;
+    case 43:
+      settings.mac_address_5 = int_value;
       break;
 #endif // STM32F7XX_ARCH
     default:

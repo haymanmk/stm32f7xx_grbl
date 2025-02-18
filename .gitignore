@@ -2,4 +2,5 @@ build/
 Debug/
 .metadata/
 .settings/
+.mxproject/
 stm32f7xx_grbl.launch

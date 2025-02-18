@@ -185,6 +185,9 @@ void stepSetTimerOC4Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
 // initialization of step function
 void stepInit(void)
 {
+    // disable irq
+    __disable_irq();
+
     // stop master timer
     TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
 
@@ -251,6 +254,9 @@ void stepInit(void)
 
     // reset OC DMA started flag
     OC_DMA_Started = 0;
+
+    // enable irq
+    __enable_irq();
 
     // ===> debug message
     // vLoggingPrintf("Step Init\n");
@@ -537,12 +543,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
         getNewBuffer = 0;
     }
 
-    if (st->step_outbits)
-    {
-        // set realtime output pin status
-        pulseBlock->realtime_output_pin_status = st->exec_block->realtime_output_pin_status;
-    }
-
     // loop through all axes
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
@@ -584,6 +584,13 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
             // set DEBUG_2_Pin to low ===> signal the end of pulse calculation
             // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
         }
+    }
+
+    // if there are any movements, update the motion control state reference by other associates.
+    if (st->step_outbits)
+    {
+        // set realtime output pin status
+        pulseBlock->realtime_output_pin_status = st->exec_block->realtime_output_pin_status;
     }
 
     // update variables
@@ -670,6 +677,26 @@ void stepUpdateDMABuffer(uint32_t address)
     /**
      * Update Variables
      */
+}
+
+/**
+ * @brief In case currentCounterValue is far behind the current counter value of the master timer,
+ *        update the currentCounterValue to a value of the current counter value of the master timer
+ *        plus a minimum low pulse width. This function is called after system turns into idle from feed hold.
+ *        Due to the feed hold request, the currentCounterValue might be far behind the current counter value.
+ *        The step data is calculated in advance and pushed in a ring buffer
+ *        before it is transferred to the DMA buffer and wait for DMA to consume it, so the currentCounterValue
+ *        is far behind the current counter value of the master timer. When user requests for feed hold,
+ *        currentCounterValue is still far behind the current counter value. If user did not update this value,
+ *        the next step data will be calculated upon this value, and timer will take a long time to reach there.
+ *        The whole system will be delayed. To avoid this, this function shall be called to update the currentCounterValue
+ *        after the feed hold request is committed.
+ */
+void stepUpdateCounterValue()
+{
+    // get counter value from the master timer and update the current counter value
+    currentCounterValue =
+        __HAL_TIM_GET_COUNTER(&MASTER_TIM_HANDLE) + MINIMUN_LOW_PULSE_WIDTH_TICKS;
 }
 
 /* =========================================================== */
@@ -1016,16 +1043,8 @@ void stepBlockAxis(uint8_t axis)
     // set the axis to idle
     stepBlockedAxes |= (1 << axis);
 
-    // suspend DMA stream
-    // SUSPEND_DMA_STREAM(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
-
-    // clear DMA interrupt flag
-    // CLEAR_DMA_IT(timDMAParamsPulse->htim->hdma[timDMAParamsPulse->TIM_DMA_ID]);
-
     // force output pin to low in output compare mode
     FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
-
-    // DMATransferCompletedAxes |= (1 << axis);
 }
 
 uint8_t stepIsPulseDataExhausted()

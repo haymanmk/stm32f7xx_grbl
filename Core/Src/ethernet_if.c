@@ -44,6 +44,13 @@ BaseType_t tcp_server_init()
         settings.ip_address_2,
         1};
     listeningPort = LISTENING_PORT + settings.tcp_port;
+    // set MAC address with STM32 UID
+    MACAddr[0] = settings.mac_address_0;
+    MACAddr[1] = settings.mac_address_1;
+    MACAddr[2] = settings.mac_address_2;
+    MACAddr[3] = settings.mac_address_3;
+    MACAddr[4] = settings.mac_address_4;
+    MACAddr[5] = settings.mac_address_5;
 
     // check if USER Button is continuously pressed over 5 seconds,
     // then use the default IP address and port

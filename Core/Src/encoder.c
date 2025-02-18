@@ -146,7 +146,14 @@ void encoderReadPosition(encoder_position_t *position)
 
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
-        ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0);
+        if (settings.dir_invert_mask & (1 << i))
+        {
+            ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0) * (-1.0);
+        }
+        else
+        {
+            ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0);
+        }
     }
 }
 
@@ -157,7 +164,14 @@ void encoderReadInstantPosition(encoder_position_t *position)
 
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
-        ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0);
+        if (settings.dir_invert_mask & (1 << i))
+        {
+            ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0) * (-1.0);
+        }
+        else
+        {
+            ((float *)position)[i] = settings.mm_per_rev[i] * (deg[i] / 360.0);
+        }
     }
 }
 

@@ -134,6 +134,12 @@ typedef struct
   uint8_t ip_address_2;
   uint8_t ip_address_3;
   uint8_t tcp_port;
+  uint8_t mac_address_0;
+  uint8_t mac_address_1;
+  uint8_t mac_address_2;
+  uint8_t mac_address_3;
+  uint8_t mac_address_4;
+  uint8_t mac_address_5;
 #endif // STM32F7XX_ARCH
 
   uint8_t homing_dir_mask;
