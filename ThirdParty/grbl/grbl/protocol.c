@@ -316,7 +316,7 @@ void protocol_exec_rt_system()
     else if (rt_exec == EXEC_ALARM_EMG_STOP)
     {
       // delay to debounce the EMG stop button
-      HAL_Delay(1000);
+      HAL_Delay(100);
       // wait here until the EMG stop is released
       do
       {
@@ -364,7 +364,7 @@ void protocol_exec_rt_system()
     {
 
       // ===> Debug Message <===
-      // vLoggingPrintf("HOLD\r\n");
+      vLoggingPrintf("HOLD\r\n");
 
       // State check for allowable states for hold methods.
       if (!(sys.state & (STATE_ALARM | STATE_CHECK_MODE)))
@@ -531,7 +531,7 @@ void protocol_exec_rt_system()
     {
 
       // ===> Debug Message <===
-      // vLoggingPrintf("STOP\r\n");
+      vLoggingPrintf("STOP\r\n");
 
       // Reinitializes the cycle plan and stepper system after a feed hold for a resume. Called by
       // realtime command execution in the main program, ensuring that the planner re-plans safely.
@@ -557,6 +557,12 @@ void protocol_exec_rt_system()
         { // For jog cancel, flush buffers and sync positions.
           sys.step_control = STEP_CONTROL_NORMAL_OP;
           plan_reset();
+        #ifdef STM32F7XX_ARCH
+          while (!stepIsPulseDataExhausted())
+          {
+            // wait for DMA to finish
+          }
+        #endif
           st_reset();
           gc_sync_position();
           plan_sync_position();
@@ -1081,6 +1087,20 @@ static void protocol_exec_rt_suspend()
       }
     }
 
+  #ifdef STM32F7XX_ARCH
+    // check
+    if (sys.state & STATE_JOG)
+    {
+      if (((sys.suspend & SUSPEND_JOG_CANCEL) > 0)
+          && (block == NULL)
+          && stepIsPulseDataExhausted())
+      {
+        // motion has stopped, set exec flag to stop jog
+        system_set_exec_state_flag(EXEC_CYCLE_STOP);
+      }
+    }
+
+  #endif
     protocol_exec_rt_system();
   }
 }

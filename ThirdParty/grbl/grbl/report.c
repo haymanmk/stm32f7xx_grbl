@@ -269,6 +269,12 @@ void report_grbl_settings()
   report_util_uint8_setting(35, settings.ip_address_2);
   report_util_uint8_setting(36, settings.ip_address_3);
   report_util_uint8_setting(37, settings.tcp_port);
+  report_util_uint8_setting(38, settings.mac_address_0);
+  report_util_uint8_setting(39, settings.mac_address_1);
+  report_util_uint8_setting(40, settings.mac_address_2);
+  report_util_uint8_setting(41, settings.mac_address_3);
+  report_util_uint8_setting(42, settings.mac_address_4);
+  report_util_uint8_setting(43, settings.mac_address_5);
 #endif // STM32F7XX_ARCH
   // Print axis settings
   uint8_t idx, set_idx;

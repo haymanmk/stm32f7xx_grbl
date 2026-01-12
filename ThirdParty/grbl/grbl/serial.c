@@ -132,7 +132,8 @@ void serial_write(uint8_t data)
   UCSR0B |= (1 << UDRIE0);
 #elif defined(STM32F7XX_ARCH)
   // give the task notification to the serial task
-  xTaskNotifyGive(serialTaskHandle);
+  if (serialTaskHandle != NULL)
+    xTaskNotifyGive(serialTaskHandle);
 #endif // AVR_ARCH
 }
 
