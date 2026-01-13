@@ -78,7 +78,7 @@ When setting the output compare mode for an output pin at run-time, e.g. toggle,
 
 Unfortunately, during the OC setting process, it needs a reset procedure before configuring OC mode to a particular mode. This action will also make output become HIGH. After the configuration, OCx has to be enabled again, which in turn forces the OCx to LOW (**Inactive**).
 
-In a nutshell, if the OC was disabled, the output stay in Hight. When it needs to be re-enabled, the output state will go from low to high over the rest procedure, and then going from high to low once re-enabling. This generates a sharp spike which might drive stepper one step.
+In a nutshell, if the OC was inactive, the output stay in Low. When it needs to be re-enabled with toggle mode, the output state will go from low to high over the reset procedure, and then going from high to low once re-enabling. This generates a sharp spike which might drive stepper one step.
 
 ```shell
 Given - Polarity: Active High
