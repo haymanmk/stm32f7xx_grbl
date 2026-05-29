@@ -58,6 +58,23 @@
 #define Y_AXIS_TIM_FLAG_CCx TIM_FLAG_CC4
 #define Z_AXIS_TIM_FLAG_CCx TIM_FLAG_CC1
 
+// Precomputed CCMRx pointers, OC*M masks, and bit-field shifts per axis.
+// CH1/CH3 occupy bits [6:4]+bit16 of CCMR1/CCMR2 (shift 0).
+// CH2/CH4 occupy bits [14:12]+bit24 of CCMR1/CCMR2 (shift 8).
+#define X_AXIS_PULSE_TIM_CCMRx_ADDR (&(X_AXIS_TIM_HANDLE.Instance->CCMR2))
+#define Y_AXIS_PULSE_TIM_CCMRx_ADDR (&(Y_AXIS_TIM_HANDLE.Instance->CCMR2))
+#define Z_AXIS_PULSE_TIM_CCMRx_ADDR (&(Z_AXIS_TIM_HANDLE.Instance->CCMR1))
+#define X_AXIS_OCxM_MASK            TIM_CCMR2_OC3M
+#define Y_AXIS_OCxM_MASK            TIM_CCMR2_OC4M
+#define Z_AXIS_OCxM_MASK            TIM_CCMR1_OC1M
+#define X_AXIS_OCxM_SHIFT           0U
+#define Y_AXIS_OCxM_SHIFT           8U
+#define Z_AXIS_OCxM_SHIFT           0U
+
+#define X_AXIS_TIM_DIER_CCxDE       TIM_DIER_CC3DE
+#define Y_AXIS_TIM_DIER_CCxDE       TIM_DIER_CC4DE
+#define Z_AXIS_TIM_DIER_CCxDE       TIM_DIER_CC1DE
+
 #define STEP_EVENT_COUNT 1000
 #define STEP_X 600
 #define STEP_Y 100
@@ -124,44 +141,6 @@ typedef struct
         regs->IFCR = 0x3FU << (__DMA_HANDLE__)->StreamIndex;                                  \
     } while (0);
 
-// Resume DMA stream with transfer complete interrupt being set in CR
-#define RESUME_DMA_STREAM_WITH_TC(__DMA_HANDLE__, __BUFFER__, __LENGTH__) \
-    do                                                                    \
-    {                                                                     \
-        CLEAR_DMA_IT(__DMA_HANDLE__);                                     \
-        (__DMA_HANDLE__)->Instance->M0AR = (uint32_t)(__BUFFER__);        \
-        (__DMA_HANDLE__)->Instance->NDTR = (uint32_t)(__LENGTH__);        \
-        (__DMA_HANDLE__)->Instance->CR |= DMA_IT_TC;                      \
-        __HAL_DMA_ENABLE((__DMA_HANDLE__));                               \
-    } while (0);
-
-// disabling and enabling DIER register
-#define OFF_AND_ON_DIER(__TIM_HANDLE__, __CCxDE__) \
-    do                                             \
-    {                                              \
-        (__TIM_HANDLE__)->Instance->DIER &= ~(__CCxDE__); \
-        (__TIM_HANDLE__)->Instance->DIER |= (__CCxDE__);  \
-    } while (0);
-
-// clear pending DMA request in timer by disabling and enabling the DMA request bit in DIER register
-#define CLEAR_PENDING_DMA_REQUEST(__TIM_HANDLE__, __TIM_CHANNEL__) \
-    do                                                         \
-    {                                                          \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1) {                \
-            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC1IF;    \
-            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC1DE)     \
-        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2) {        \
-            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC2IF;    \
-            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC2DE)     \
-        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3) {        \
-            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC3IF;    \
-            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC3DE)     \
-        } else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4) {        \
-            (__TIM_HANDLE__)->Instance->SR &= ~TIM_SR_CC4IF;    \
-            OFF_AND_ON_DIER(__TIM_HANDLE__, TIM_DIER_CC4DE) }   \
-    } while (0);
-
-
 // Timer start counter
 #define TIM_START_COUNTER(__HANDLE__) ((__HANDLE__).Instance->CR1 |= TIM_CR1_CEN)
 
@@ -191,6 +170,12 @@ typedef struct
         (__TARGET_ARR__)[__AXIS__].Step_Bit = CONCATENATE(__AXIS__, _STEP_BIT);                           \
         (__TARGET_ARR__)[__AXIS__].Dir_Bit = CONCATENATE(__AXIS__, _DIRECTION_BIT);                       \
         (__TARGET_ARR__)[__AXIS__].TIM_FLAG_CCx = CONCATENATE(__AXIS__, _TIM_FLAG_CCx);                   \
+        (__TARGET_ARR__)[__AXIS__].CCMRx_Addr = CONCATENATE(__AXIS__, _PULSE_TIM_CCMRx_ADDR);             \
+        (__TARGET_ARR__)[__AXIS__].OCxM_Mask = CONCATENATE(__AXIS__, _OCxM_MASK);                         \
+        (__TARGET_ARR__)[__AXIS__].OCxM_Shift = CONCATENATE(__AXIS__, _OCxM_SHIFT);                       \
+        (__TARGET_ARR__)[__AXIS__].TIM_DIER_CCxDE = CONCATENATE(__AXIS__, _TIM_DIER_CCxDE);               \
+        (__TARGET_ARR__)[__AXIS__].hdma = CONCATENATE(__AXIS__, _TIM_HANDLE).hdma[CONCATENATE(__AXIS__, _PULSE_TIM_DMA_ID)]; \
+        (__TARGET_ARR__)[__AXIS__].DirOutputPort = &(CONCATENATE(__AXIS__, _DIRECTION_PORT));             \
     } while (0);
 
 // define ring buffer and associated variables
@@ -238,107 +223,6 @@ typedef struct
 
 // check if ring buffer is exhausted
 #define IS_RING_BUFFER_EXHAUSTED(__AXIS__) (pulseRingBufferHead[__AXIS__] == pulseRingBufferTail[__AXIS__])
-
-// get direction output bit from axis
-#define GET_DIRECTION_BIT_FROM_AXIS(__AXIS__)                                                  \
-    ((__AXIS__ == X_AXIS) ? X_AXIS_DIRECTION_BIT : (__AXIS__ == Y_AXIS) ? Y_AXIS_DIRECTION_BIT \
-                                               : (__AXIS__ == Z_AXIS)   ? Z_AXIS_DIRECTION_BIT \
-                                                                        : UINT8_MAX)
-
-// get direction output port from axis
-#define GET_DIRECTION_PORT_FROM_AXIS(__AXIS__)                                                         \
-    ((__AXIS__ == X_AXIS) ? &(X_AXIS_DIRECTION_PORT) : (__AXIS__ == Y_AXIS) ? &(Y_AXIS_DIRECTION_PORT) \
-                                                   : (__AXIS__ == Z_AXIS)   ? &(Z_AXIS_DIRECTION_PORT) \
-                                                                            : NULL)
-
-/**
- * @param __OC_MODE__ Output compare mode should be one of the following:
- *          TIM_OCMODE_TIMING
- *          TIM_OCMODE_ACTIVE
- *          TIM_OCMODE_INACTIVE
- *          TIM_OCMODE_TOGGLE
- *          TIM_OCMODE_PWM1
- *          TIM_OCMODE_PWM2
- *          TIM_OCMODE_FORCED_ACTIVE
- *          TIM_OCMODE_FORCED_INACTIVE
- *          TIM_OCMODE_RETRIGERRABLE_OPM1
- *          TIM_OCMODE_RETRIGERRABLE_OPM2
- *          TIM_OCMODE_COMBINED_PWM1
- *          TIM_OCMODE_COMBINED_PWM2
- *          TIM_OCMODE_ASYMMETRIC_PWM1
- *          TIM_OCMODE_ASYMMETRIC_PWM2
- */
-// set output compare mode for channel 1
-#define SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, __OC_MODE__)      \
-    stepSetTimerOC1Mode(__TIM_HANDLE__->Instance, __OC_MODE__); \
-
-// set output compare mode for channel 2
-#define SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, __OC_MODE__)      \
-    stepSetTimerOC2Mode(__TIM_HANDLE__->Instance, __OC_MODE__); \
-
-// set output compare mode for channel 3
-#define SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, __OC_MODE__)      \
-    stepSetTimerOC3Mode(__TIM_HANDLE__->Instance, __OC_MODE__); \
-
-// set output compare mode for channel 4
-#define SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, __OC_MODE__)      \
-    stepSetTimerOC4Mode(__TIM_HANDLE__->Instance, __OC_MODE__); \
-
-// Force output pin to LOW in output compare mode
-#define FORCE_OC_OUTPUT_LOW(__TIM_HANDLE__, __TIM_CHANNEL__)           \
-    do                                                                 \
-    {                                                                  \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                        \
-            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                   \
-            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                   \
-            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                   \
-            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_FORCED_INACTIVE) \
-    } while (0);
-
-// Force output pin to HIGH in output compare mode
-#define FORCE_OC_OUTPUT_HIGH(__TIM_HANDLE__, __TIM_CHANNEL__)        \
-    do                                                               \
-    {                                                                \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
-            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                 \
-            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                 \
-            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                 \
-            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_FORCED_ACTIVE) \
-    } while (0);
-
-// Set output pin to LOW in output compare mode when match
-#define SET_OC_OUTPUT_LOW(__TIM_HANDLE__, __TIM_CHANNEL__)           \
-    do                                                                 \
-    {                                                                  \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                        \
-            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                   \
-            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                   \
-            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                   \
-            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_INACTIVE) \
-    } while (0);
-
-// Set output turned into toggle mode in output compare mode when match
-#define SET_OC_OUTPUT_TOGGLE(__TIM_HANDLE__, __TIM_CHANNEL__)      \
-    do                                                               \
-    {                                                                \
-        if ((__TIM_CHANNEL__) == TIM_CHANNEL_1)                      \
-            SET_OC_MODE_CHANNEL_1(__TIM_HANDLE__, TIM_OCMODE_TOGGLE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_2)                 \
-            SET_OC_MODE_CHANNEL_2(__TIM_HANDLE__, TIM_OCMODE_TOGGLE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_3)                 \
-            SET_OC_MODE_CHANNEL_3(__TIM_HANDLE__, TIM_OCMODE_TOGGLE) \
-        else if ((__TIM_CHANNEL__) == TIM_CHANNEL_4)                 \
-            SET_OC_MODE_CHANNEL_4(__TIM_HANDLE__, TIM_OCMODE_TOGGLE) \
-    } while (0);
 
 // get the bit position in general notification of data not available for specified axis
 #define GET_DATA_NOT_AVAILABLE_BIT(__AXIS__)                                 \

@@ -35,7 +35,36 @@ typedef struct TIM_DMA_Parameters
     uint8_t Step_Bit;
     uint8_t Dir_Bit;
     uint32_t TIM_FLAG_CCx; // capture/compare interrupt flag
+    volatile uint32_t *CCMRx_Addr;
+    uint32_t OCxM_Mask;
+    uint8_t OCxM_Shift;
+    uint32_t TIM_DIER_CCxDE;
+    DMA_HandleTypeDef *hdma;
+    volatile uint32_t *DirOutputPort;
 } TIM_DMA_Parameters_t;
+
+static inline void stepSetOCMode(const TIM_DMA_Parameters_t *p, uint32_t mode)
+{
+    *p->CCMRx_Addr = (*p->CCMRx_Addr & ~p->OCxM_Mask) | (mode << p->OCxM_Shift);
+}
+
+static inline void stepClearPendingDmaRequest(const TIM_DMA_Parameters_t *p)
+{
+    TIM_TypeDef *t = p->htim->Instance;
+    t->DIER &= ~p->TIM_DIER_CCxDE;
+    t->DIER |=  p->TIM_DIER_CCxDE;
+}
+
+// tcie_bit must be either DMA_IT_TC (enable transfer-complete IRQ) or 0 (disable).
+// We clear-then-OR to flip TCIE explicitly each cycle, since the dominant axis can change between slots.
+static inline void stepResumeDmaStream(DMA_HandleTypeDef *hdma, uint32_t buffer_addr, uint16_t length, uint32_t tcie_bit)
+{
+    DMA_Base_Registers *regs = (DMA_Base_Registers *)hdma->StreamBaseAddress;
+    regs->IFCR = 0x3FU << hdma->StreamIndex;
+    hdma->Instance->M0AR = buffer_addr;
+    hdma->Instance->NDTR = length;
+    hdma->Instance->CR  = (hdma->Instance->CR & ~DMA_IT_TC) | tcie_bit | DMA_SxCR_EN;
+}
 
 typedef struct
 {
@@ -125,6 +154,8 @@ typedef struct
     uint8_t motion_control_state;
     IO_TYPE dir_outbits;
     uint8_t realtime_output_pin_status;
+    uint8_t tc_axis;             // axis whose DMA TC IRQ we'll watch (latest last-counter); UINT8_MAX = none
+    uint32_t tc_last_counter;    // OFF-edge counter of tc_axis's last pulse in this slot
 } pulse_block_t;
 
 /**
@@ -145,9 +176,6 @@ volatile uint32_t generalNotification = (GENERAL_NOTIFICATION_GET_NEW_BUFFER | G
 
 // current steppers state, which can be used to determine if a stepper shall be re-enabled from idle.
 volatile uint8_t currentStepperState = 0; // bit 0: x axis active, bit 1: y axis active, bit 2: z axis active
-
-// track DMA transfer completion
-volatile uint8_t DMATransferCompletedAxes = 0; // bit 0: x axis, bit 1: y axis, bit 2: z axis
 
 // current counter value only for calculating the pulse data
 volatile uint32_t currentCounterValue = MINIMUN_LOW_PULSE_WIDTH_TICKS;
@@ -174,10 +202,6 @@ uint16_t stepRingBufferGetTail();
 void stepRingBufferIncrementTail();
 uint32_t stepGetFreeDataAddress();
 uint32_t stepGetAvailableDataAddress();
-void stepSetTimerOC1Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
-void stepSetTimerOC2Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
-void stepSetTimerOC3Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
-void stepSetTimerOC4Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode);
 
 /* ============================= */
 /* === Function Declarations === */
@@ -191,10 +215,15 @@ void stepInit(void)
     // stop master timer
     TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
 
+    // initialize axis parameters (populate precomputed CCMRx pointers, masks, shifts)
+    INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, X_AXIS);
+    INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, Y_AXIS);
+    INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, Z_AXIS);
+
     // force output compare mode to inactive
-    FORCE_OC_OUTPUT_LOW((&X_AXIS_TIM_HANDLE), X_AXIS_PULSE_TIM_CHANNEL);
-    FORCE_OC_OUTPUT_LOW((&Y_AXIS_TIM_HANDLE), Y_AXIS_PULSE_TIM_CHANNEL);
-    FORCE_OC_OUTPUT_LOW((&Z_AXIS_TIM_HANDLE), Z_AXIS_PULSE_TIM_CHANNEL);
+    stepSetOCMode(&axisTimerDMAParams[X_AXIS], TIM_OCMODE_FORCED_INACTIVE);
+    stepSetOCMode(&axisTimerDMAParams[Y_AXIS], TIM_OCMODE_FORCED_INACTIVE);
+    stepSetOCMode(&axisTimerDMAParams[Z_AXIS], TIM_OCMODE_FORCED_INACTIVE);
 
     // clear DMA interrupt flag
     CLEAR_DMA_IT(X_AXIS_TIM_HANDLE.hdma[X_AXIS_PULSE_TIM_DMA_ID]);
@@ -222,11 +251,6 @@ void stepInit(void)
     __HAL_TIM_SET_COMPARE(&Y_AXIS_TIM_HANDLE, Y_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
     __HAL_TIM_SET_COMPARE(&Z_AXIS_TIM_HANDLE, Z_AXIS_PULSE_TIM_CHANNEL, 0xFFFFFFFF);
 
-    // initialize axis parameters
-    INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, X_AXIS);
-    INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, Y_AXIS);
-    INIT_TIM_DMA_PARAMETERS(axisTimerDMAParams, Z_AXIS);
-
     // initialize ring buffer head and tail
     pulseRingBufferHead = 0;
     pulseRingBufferTail = 0;
@@ -239,9 +263,6 @@ void stepInit(void)
 
     // initialize current stepper state
     currentStepperState = 0;
-
-    // initialize DMA transfer completed axes
-    DMATransferCompletedAxes = 0;
 
     // initialize current counter value
     currentCounterValue = MINIMUN_LOW_PULSE_WIDTH_TICKS;
@@ -360,8 +381,8 @@ void stepTask(void *pvParameters)
                 // reset timer
                 __HAL_TIM_SetCounter(timDMAParamsPulse->htim, 0);
 
-                uint8_t dirOutputBit = GET_DIRECTION_BIT_FROM_AXIS(i);
-                volatile uint32_t *pDirOutputPort = GET_DIRECTION_PORT_FROM_AXIS(i);
+                uint8_t dirOutputBit = timDMAParamsPulse->Dir_Bit;
+                volatile uint32_t *pDirOutputPort = timDMAParamsPulse->DirOutputPort;
 
                 // set the direction output bit according to the dir_outbit
                 *pDirOutputPort = (*pDirOutputPort & ~(1 << dirOutputBit)) | (pulseBlock->dir_outbits & (1 << dirOutputBit));
@@ -370,10 +391,16 @@ void stepTask(void *pvParameters)
                 if (pulseBlock->motion_control_state & (1 << i))
                 {
                     // set output compare mode
-                    SET_OC_OUTPUT_TOGGLE(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
+                    stepSetOCMode(timDMAParamsPulse, TIM_OCMODE_TOGGLE);
 
                     // start timer output mode with DMA stream
                     stepTimeOCStartDMA(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL, (uint32_t *)pulseData, pulseData->length);
+
+                    // HAL_DMA_Start_IT enabled TC for all streams; clear it on non-dominant axes so only tc_axis fires
+                    if (i != pulseBlock->tc_axis)
+                    {
+                        timDMAParamsPulse->hdma->Instance->CR &= ~DMA_IT_TC;
+                    }
 
                     // generate compare event
                     HAL_TIM_GenerateEvent(timDMAParamsPulse->htim, timDMAParamsPulse->CompareEventID);
@@ -384,8 +411,7 @@ void stepTask(void *pvParameters)
                 else // this axis is not active
                 {
                     // force output pin to low in output compare mode
-                    SET_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
-                    // stepSetTimerOC2Mode(timDMAParamsPulse->htim->Instance, TIM_OCMODE_INACTIVE);
+                    stepSetOCMode(timDMAParamsPulse, TIM_OCMODE_INACTIVE);
                 }
 
                 // check if it is the master timer
@@ -398,9 +424,6 @@ void stepTask(void *pvParameters)
 
             // set realtime output pin status
             UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, (pulseBlock->realtime_output_pin_status ^ 0x01));
-
-            // set DEBUG_2_Pin to realtime output pin status
-            UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, pulseBlock->realtime_output_pin_status);
 
             // update current motion control state by the motion_control_state coming with the pulse data
             currentStepperState = pulseBlock->motion_control_state;
@@ -418,36 +441,19 @@ void stepTask(void *pvParameters)
         // NOT the "First Time" to start the process, but out of data asking from the timer interrupt
         else
         {
-            // set PD5 to high ===> signal the start of resuming DMA stream
-            // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_5, GPIO_PIN_SET);
+            // get newly-available buffer
+            pulseBlockAddress = stepGetAvailableDataAddress();
 
-            // Determine if it should request for new data or not.
-            if (currentStepperState == DMATransferCompletedAxes)
+            if (pulseBlockAddress == 0)
             {
-                // get available address
-                pulseBlockAddress = stepGetAvailableDataAddress();
-
-                if (pulseBlockAddress == 0)
-                {
-                    // Error_Handler();
-                    continue;
-                }
-
-                // clear DMA transfer completed axes
-                DMATransferCompletedAxes = 0;
+                continue;
             }
 
-            // update DMA buffer
             stepUpdateDMABuffer(pulseBlockAddress);
 
-            // restart counter
-            TIM_START_COUNTER(MASTER_TIM_HANDLE);
-
-            // clear the flag
+            // master timer was never stopped in the new design; stepUpdateDMABuffer's
+            // overshoot guard handles CNT alignment with the new buffer.
             generalNotification &= ~GENERAL_NOTIFICATION_DATA_NOT_AVAILABLE_ALL_AXES;
-
-            // set PD5 to low ===> signal the end of resuming DMA stream
-            // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_5, GPIO_PIN_RESET);
         }
     }
 }
@@ -455,7 +461,7 @@ void stepTask(void *pvParameters)
 HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 {
     // set DEBUG_1_Pin to high ===> signal the start of pulse calculation
-    UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 1);
+    // UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 1);
 
     static uint8_t getNewBuffer = (1 << NUM_DIMENSIONS) - 1; // bit 0: x axis, bit 1: y axis, bit 2: z axis
     static pulse_block_t *pulseBlock = {0};
@@ -474,9 +480,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 
         if ((st->exec_segment->cycles_per_tick == 0) || (st->exec_segment->cycles_per_tick == 0xffffffff))
         {
-            // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
-            UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
-
             // debug message
             vLoggingPrintf("errParam\n");
 
@@ -486,9 +489,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 
     if (!(st->step_pulse_time))
     {
-        // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
-        UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
-
         // debug message
         vLoggingPrintf("errZero\n");
 
@@ -507,10 +507,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
             if (stepRingBufferIncrementHead() == UINT16_MAX)
             {
                 // No more buffer available to store pulse data
-
-                // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
-                UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
-
                 return HAL_BUSY;
             }
             // ring buffer head has been incremented
@@ -521,6 +517,9 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 
         // reset motion control state
         pulseBlock->motion_control_state = 0;
+
+        // reset TC-axis selection for the new slot
+        pulseBlock->tc_axis = UINT8_MAX;
 
         // set direction state
         pulseBlock->dir_outbits = st->dir_outbits;
@@ -559,20 +558,26 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 
         if (st->step_outbits & (1 << step_bit))
         {
-            // set DEBUG_2_Pin to high ===> signal the start of pulse calculation
-            // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
+            uint32_t off_edge_counter = currentCounterValue + st->step_pulse_time;
 
             // set this axis to ACTIVE state
             pulseBlock->motion_control_state |= (1 << i);
 
             // add pulse data
-            // add ON state pulse data
-            pulse->data[buf_length++] = currentCounterValue;
-            // add OFF state pulse data
-            pulse->data[buf_length++] = currentCounterValue + st->step_pulse_time;
+            pulse->data[buf_length++] = currentCounterValue;   // ON edge
+            pulse->data[buf_length++] = off_edge_counter;      // OFF edge
 
             // update the length of available data
             pulse->length = buf_length;
+
+            // pick this axis as tc_axis if its last counter is later than the current best.
+            // Signed-diff compare handles 32-bit wraparound; sentinel UINT8_MAX is "no candidate yet".
+            if (pulseBlock->tc_axis == UINT8_MAX ||
+                (int32_t)(off_edge_counter - pulseBlock->tc_last_counter) > 0)
+            {
+                pulseBlock->tc_axis = i;
+                pulseBlock->tc_last_counter = off_edge_counter;
+            }
 
             // check if the buffer is full
             if (buf_length >= DOUBLE_BUFFER_SIZE)
@@ -580,9 +585,6 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
                 // set the flag to get new buffer
                 getNewBuffer |= (1 << i);
             }
-
-            // set DEBUG_2_Pin to low ===> signal the end of pulse calculation
-            // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
         }
     }
 
@@ -596,17 +598,11 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
     // update variables
     currentCounterValue += cycles_per_tick; // * (amass_level + 1);
 
-    // set DEBUG_1_Pin to low ===> signal the end of pulse calculation
-    UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 0);
-
     return HAL_OK;
 }
 
 void stepUpdateDMABuffer(uint32_t address)
 {
-    // set PD7 to high ===> signal the start of updating DMA buffer
-    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_SET);
-
     pulse_block_t *pulseBlock = (pulse_block_t *)address;
     uint8_t upcomingAxesActiveState = pulseBlock->motion_control_state & (~stepBlockedAxes); // get upcoming axes active state
     // check if there is any bit that is set to 0 in currentStepperState
@@ -621,16 +617,18 @@ void stepUpdateDMABuffer(uint32_t address)
     // manual update those axes that shall be re-enabled from idle and will stay in idle state in the upcoming cycle
     // to avoid update the same axis twice,
     // loop through all axes
+    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
         // pulse data
         pulse_t *pulse = &(pulseBlock->pulse_data[i]);
-        uint8_t dirOutputBit = GET_DIRECTION_BIT_FROM_AXIS(i);
-        volatile uint32_t *pDirOutputPort = GET_DIRECTION_PORT_FROM_AXIS(i);
+        uint8_t dirOutputBit = axisTimerDMAParams[i].Dir_Bit;
+        volatile uint32_t *pDirOutputPort = axisTimerDMAParams[i].DirOutputPort;
 
         // check if there is any axis shall be re-enabled from idle or resume DMA stream to continue on transferring data
         if (upcomingAxesActiveState & (1 << i))
         {
+
             // set the axis to active
             currentStepperState |= (1 << i);
 
@@ -638,45 +636,88 @@ void stepUpdateDMABuffer(uint32_t address)
             *pDirOutputPort = (*pDirOutputPort & ~(1 << dirOutputBit)) | (pulseBlock->dir_outbits & (1 << dirOutputBit));
 
             // force output turned into toggle mode
-            SET_OC_OUTPUT_TOGGLE(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL);
+            stepSetOCMode(&axisTimerDMAParams[i], TIM_OCMODE_TOGGLE);
 
             // clear the pending DMA request in timer
-            CLEAR_PENDING_DMA_REQUEST(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL);
+            // stepClearPendingDmaRequest(&axisTimerDMAParams[i]);
+
+            // only the tc_axis gets TC IRQ enabled; the rest run silently and auto-disable on NDTR=0
+            uint32_t tcie_bit = (i == pulseBlock->tc_axis) ? DMA_IT_TC : 0U;
 
             // resume DMA stream with updated buffer and length
-
             if (OC_DMA_Started & (1 << i)) // OC DMA might be already started
             {
-                RESUME_DMA_STREAM_WITH_TC(axisTimerDMAParams[i].htim->hdma[axisTimerDMAParams[i].TIM_DMA_ID], (uint32_t *)pulse, pulse->length);
+                stepResumeDmaStream(axisTimerDMAParams[i].hdma, (uint32_t)pulse, pulse->length, tcie_bit);
             }
             else // OC DMA is not started yet
             {
                 stepTimeOCStartDMA(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL, (uint32_t *)pulse, pulse->length);
 
+                // HAL_DMA_Start_IT enabled TC; clear it again if this isn't the tc_axis
+                if (tcie_bit == 0U)
+                {
+                    axisTimerDMAParams[i].hdma->Instance->CR &= ~DMA_IT_TC;
+                }
+
                 // set OC DMA started flag
                 OC_DMA_Started |= (1 << i);
             }
             // generate compare event to trigger the DMA transfer
-            GENERATE_TIM_EVENT(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].CompareEventID);
+            // GENERATE_TIM_EVENT(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].CompareEventID);
         }
         else // idle mode(present) -> idle mode(upcoming) or active mode(present) -> idle mode(upcoming)
         {
-            // turn into idle state
+            // Force this axis's OC output LOW. Without this, an axis left in TOGGLE mode from a
+            // previous motion (with a stale CCR holding its old last value) would spuriously
+            // toggle the next time CNT catches up to that old CCR.
+            stepSetOCMode(&axisTimerDMAParams[i], TIM_OCMODE_FORCED_INACTIVE);
 
             // set the axis to idle
             currentStepperState &= ~(1 << i);
         }
     }
+    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
 
     // set real-time output pin status
     UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, (pulseBlock->realtime_output_pin_status ^ 0x01));
 
-    // set DEBUG_2_Pin to denote the status of real-time output pin
-    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, pulseBlock->realtime_output_pin_status);
+    // Overshoot guard: master timer kept running through the load, so CNT may have passed
+    // some axes' first ON targets. For each active axis, signed-diff compare data[0] vs CNT;
+    // if any axis's first target was passed, rewind both timers' CNT to just before the
+    // earliest-passed target so the missed match fires on the next tick.
+    if (upcomingAxesActiveState)
+    {
+        UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, 1);
+        uint32_t cnt = MASTER_TIM_HANDLE.Instance->CNT;
+        int32_t earliest_delta = 0;
+        uint32_t earliest_target = 0;
+        uint8_t any_past = 0;
 
-    /**
-     * Update Variables
-     */
+        for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
+        {
+            if (!(upcomingAxesActiveState & (1 << i))) continue;
+            uint32_t target = pulseBlock->pulse_data[i].data[0];
+            int32_t delta = (int32_t)(target - cnt);
+            if (delta <= 0 && (!any_past || delta < earliest_delta))
+            {
+                earliest_delta = delta;
+                earliest_target = target;
+                any_past = 1;
+            }
+        }
+
+        if (any_past)
+        {
+            uint32_t new_cnt = earliest_target - 1U;  // next tick matches earliest_target
+            MASTER_TIM_HANDLE.Instance->CNT = new_cnt;
+            Z_AXIS_TIM_HANDLE.Instance->CNT = new_cnt;  // keep slave-gated TIM5 aligned
+        }
+
+        // Ensure the master timer is running. In the hot ISR path this is a no-op (CEN already 1).
+        // After stepGoIdle stopped the timer for motion-end, this is what restarts it for the next motion.
+        TIM_START_COUNTER(MASTER_TIM_HANDLE);
+        UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, 0);
+    }
 }
 
 /**
@@ -707,73 +748,34 @@ void stepUpdateCounterValue()
  */
 void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
 {
-    // stop counter
-    TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
-
     // set PD6 to high ===> signal the start of ISR
-    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_SET);
-
-    // identify the axis
-    axis_t axis = GET_AXIS_FROM_TIM_HANDLE(htim);
-
-    // force output compare mode to inactive
-    FORCE_OC_OUTPUT_LOW(htim, axisTimerDMAParams[axis].TIM_CHANNEL);
-
-    // suspend DMA stream
-    // ==> to update DMA buffer length and address, DMA stream should be suspended
-    SUSPEND_DMA_STREAM(htim->hdma[GET_TIM_DMA_ID_FROM_AXIS(axis)]);
+    UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_SET);
 
     // avoid doing anything if the step agent has been reset from software.
     if (generalNotification & GENERAL_NOTIFICATION_FIRST_TIME_START)
     {
-        // set PD6 to low ===> signal the end of ISR
-        // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
-
-        return;
+        goto exit;
     }
 
-    // set the axis that its DMA transfer is completed
-    DMATransferCompletedAxes |= (1 << axis);
+    // Master timer keeps running through the ISR — the last OFF edge fires naturally between TC
+    // and end of this handler, so no pulse elongation. stepUpdateDMABuffer's overshoot guard
+    // rewinds CNT if the new buffer's first target was passed during the load.
+    pulseBlockAddress = stepGetAvailableDataAddress();
 
-    /**
-     * Start Update DMA buffer
-     */
-    // determine if it should request for new data or not
-    if (currentStepperState == DMATransferCompletedAxes)
+    if (pulseBlockAddress != 0)
     {
-        // get the available data address
-        pulseBlockAddress = stepGetAvailableDataAddress();
-
-        // check if the address is valid
-        if (pulseBlockAddress != 0)
-        {
-            stepUpdateDMABuffer(pulseBlockAddress);
-
-            // clear DMA transfer completed axes
-            DMATransferCompletedAxes = 0;
-
-            // timer shall not be started as if all axes have been blocked during homing cycle,
-            // take into consideration the blocked axes
-            if (currentStepperState & (~stepBlockedAxes))
-            {
-                // restart counter
-                TIM_START_COUNTER(MASTER_TIM_HANDLE); // timer x axis
-            }
-        }
-        else
-        {
-            // notify main task to update pulse data
-            generalNotification |= GET_DATA_NOT_AVAILABLE_BIT(axis);
-        }
+        stepUpdateDMABuffer(pulseBlockAddress);
     }
     else
     {
-        // resume counter
-        TIM_START_COUNTER(MASTER_TIM_HANDLE); // timer x axis
+        // notify main task to update pulse data
+        axis_t axis = GET_AXIS_FROM_TIM_HANDLE(htim);
+        generalNotification |= GET_DATA_NOT_AVAILABLE_BIT(axis);
     }
 
+exit:
     // set PD6 to low ===> signal the end of ISR
-    // HAL_GPIO_WritePin(GPIOD, GPIO_PIN_6, GPIO_PIN_RESET);
+    UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_RESET);
 }
 
 /* =========================================================== */
@@ -870,11 +872,30 @@ uint32_t stepGetAvailableDataAddress()
 /*                      Everything about Stepper                         */
 /* ===================================================================== */
 
+// TODO(post-idle-restart-delay): On the third motion (or any post-idle motion whose active axis
+// differs from the previous one), the first pulse does not fire immediately when the timer
+// restarts. Hooking stepUpdateCounterValue() into the FORCE_STOP transition below was not enough.
+// Things to check next session:
+//   1. Confirm stepWakeUp is actually invoked by grbl on every motion-resume (instrument entry).
+//   2. Trace currentCounterValue across stepGoIdle → stepWakeUp → first stepCalculatePulseData
+//      call, and compare against MASTER_TIM CNT after the restart in stepUpdateDMABuffer.
+//   3. Verify pulse_data[0] of the first slot of the new motion vs the snapshot of CNT taken by
+//      the overshoot guard — the guard logs nothing today, may need a debug pin around it.
+//   4. Possibility: stepCalculatePulseData runs and overwrites currentCounterValue before
+//      stepWakeUp ever fires, so the realign is too late. If so, move the realign into the
+//      stepTask "data not available -> data available" transition (around step.c:443 in the
+//      NOT-First-Time recovery branch), guarded by the same FORCE_STOP-cleared signal.
 void stepWakeUp()
 {
     // check if pulse calculation is disabled
     if (generalNotification & GENERAL_NOTIFICATION_FORCE_STOP)
     {
+        // Coming out of idle: hardware CNT is frozen wherever stepGoIdle stopped it, but the
+        // software pulse-train cursor (currentCounterValue) kept advancing per-iteration during
+        // the previous motion. Realign the cursor to CNT so the next motion's data[0] sits just
+        // a few ticks ahead of CNT.
+        stepUpdateCounterValue();
+
         // clear Force stop flag
         generalNotification &= ~GENERAL_NOTIFICATION_FORCE_STOP;
     }
@@ -885,6 +906,13 @@ void stepWakeUp()
 
 void stepGoIdle()
 {
+    // Force all axes' OC outputs LOW before stopping the timer. In the new always-running design,
+    // the counter could be mid-pulse (between an ON-edge match and the OFF-edge match), so stopping
+    // it alone would freeze the output HIGH and invert the next motion's first toggle.
+    stepSetOCMode(&axisTimerDMAParams[X_AXIS], TIM_OCMODE_FORCED_INACTIVE);
+    stepSetOCMode(&axisTimerDMAParams[Y_AXIS], TIM_OCMODE_FORCED_INACTIVE);
+    stepSetOCMode(&axisTimerDMAParams[Z_AXIS], TIM_OCMODE_FORCED_INACTIVE);
+
     // stop counter
     TIM_STOP_COUNTER(MASTER_TIM_HANDLE); // timer x axis
 
@@ -920,121 +948,6 @@ void stepNotifyContinuePulseCalculation()
     xTaskNotifyGive(xHandleStepTask);
 }
 
-void stepSetTimerOC1Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode)
-{
-    uint32_t tmpccmrx;
-    uint32_t tmpccer;
-    // uint32_t tmpcr2;
-
-    /* Get the TIMx CCER register value */
-    tmpccer = TIMx->CCER;
-
-    /* Disable the Channel 1: Reset the CC1E Bit */
-    TIMx->CCER &= ~TIM_CCER_CC1E;
-
-    /* Get the TIMx CCMR1 register value */
-    tmpccmrx = TIMx->CCMR1;
-
-    /* Reset the Output Compare mode and Capture/Compare selection Bits */
-    tmpccmrx &= ~TIM_CCMR1_OC1M;
-    tmpccmrx &= ~TIM_CCMR1_CC1S;
-    /* Select the Output Compare Mode */
-    tmpccmrx |= oc_mode;
-
-    /* Write to TIMx CCMR1 */
-    TIMx->CCMR1 = tmpccmrx;
-
-    /* Write to TIMx CCER */
-    TIMx->CCER = tmpccer;
-}
-
-void stepSetTimerOC2Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode)
-{
-    uint32_t tmpccmrx;
-    uint32_t tmpccer;
-    // uint32_t tmpcr2;
-
-    /* Get the TIMx CCER register value */
-    tmpccer = TIMx->CCER;
-
-    /* Disable the Channel 2: Reset the CC2E Bit */
-    TIMx->CCER &= ~TIM_CCER_CC2E;
-
-    /* Get the TIMx CCMR1 register value */
-    tmpccmrx = TIMx->CCMR1;
-
-    /* Reset the Output Compare mode and Capture/Compare selection Bits */
-    tmpccmrx &= ~TIM_CCMR1_OC2M;
-    tmpccmrx &= ~TIM_CCMR1_CC2S;
-    /* Select the Output Compare Mode */
-    tmpccmrx |= (oc_mode << 8U);
-
-    /* Write to TIMx CCMR1 */
-    TIMx->CCMR1 = tmpccmrx;
-
-    /* Write to TIMx CCER */
-    TIMx->CCER = tmpccer;
-}
-
-void stepSetTimerOC3Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode)
-{
-    uint32_t tmpccmrx;
-    uint32_t tmpccer;
-    // uint32_t tmpcr2;
-
-    /* Get the TIMx CCER register value */
-    tmpccer = TIMx->CCER;
-
-    /* Disable the Channel 3: Reset the CC3E Bit */
-    TIMx->CCER &= ~TIM_CCER_CC3E;
-
-    /* Get the TIMx CCMR2 register value */
-    tmpccmrx = TIMx->CCMR2;
-
-    /* Reset the Output Compare mode and Capture/Compare selection Bits */
-    tmpccmrx &= ~TIM_CCMR2_OC3M;
-    tmpccmrx &= ~TIM_CCMR2_CC3S;
-    /* Select the Output Compare Mode */
-    tmpccmrx |= oc_mode;
-
-    /* Write to TIMx CCMR2 */
-    TIMx->CCMR2 = tmpccmrx;
-
-    /* Write to TIMx CCER */
-    TIMx->CCER = tmpccer;
-}
-
-void stepSetTimerOC4Mode(TIM_TypeDef *TIMx, const uint32_t oc_mode)
-{
-    uint32_t tmpccmrx;
-    uint32_t tmpccer;
-    // uint32_t tmpcr2;
-
-    /* Get the TIMx CCER register value */
-    tmpccer = TIMx->CCER;
-
-    /* Disable the Channel 4: Reset the CC4E Bit */
-    TIMx->CCER &= ~TIM_CCER_CC4E;
-
-    /* Get the TIMx CCMR2 register value */
-    tmpccmrx = TIMx->CCMR2;
-
-    /* Reset the Output Compare mode and Capture/Compare selection Bits */
-    tmpccmrx &= ~TIM_CCMR2_OC4M;
-    tmpccmrx &= ~TIM_CCMR2_CC4S;
-    /* Select the Output Compare Mode */
-    tmpccmrx |= (oc_mode << 8U);
-
-    /* Write to TIMx CR2 */
-    //   TIMx->CR2 = tmpcr2;
-
-    /* Write to TIMx CCMR2 */
-    TIMx->CCMR2 = tmpccmrx;
-
-    /* Write to TIMx CCER */
-    TIMx->CCER = tmpccer;
-}
-
 void stepBlockAxis(uint8_t axis)
 {
     // get timer and DMA parameters of this axis
@@ -1044,7 +957,7 @@ void stepBlockAxis(uint8_t axis)
     stepBlockedAxes |= (1 << axis);
 
     // force output pin to low in output compare mode
-    FORCE_OC_OUTPUT_LOW(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL);
+    stepSetOCMode(timDMAParamsPulse, TIM_OCMODE_FORCED_INACTIVE);
 }
 
 uint8_t stepIsPulseDataExhausted()

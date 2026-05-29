@@ -586,8 +586,8 @@ void stepper_pulse_generation_isr()
 #endif
   if (st.counter_y > st.exec_block->step_event_count)
   {
-    // set DEBUG_3_PIN high
-    UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_SET);
+    // set DEBUG_3_PIN (PD6) high
+    // UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_SET);
 
     st.step_outbits |= (1 << Y_STEP_BIT);
 #if defined(ENABLE_DUAL_AXIS) && (DUAL_AXIS_SELECT == Y_AXIS)
@@ -616,8 +616,8 @@ void stepper_pulse_generation_isr()
 #endif
     }
 
-    // set DEBUG_3_PIN low
-    UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_RESET);
+    // set DEBUG_3_PIN (PD6) low
+    // UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_RESET);
   }
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
   st.counter_z += st.steps[Z_AXIS];
@@ -660,8 +660,6 @@ void stepper_pulse_generation_isr()
 #endif
   }
 
-  // set DEBUG_4_PIN high
-  UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, GPIO_PIN_SET);
   st.step_count--; // Decrement step events count
   if (st.step_count == 0)
   {
@@ -672,8 +670,6 @@ void stepper_pulse_generation_isr()
       segment_buffer_tail = 0;
     }
   }
-  // set DEBUG_4_PIN low
-  UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, GPIO_PIN_RESET);
 
   st.step_outbits ^= step_port_invert_mask; // Apply step port invert mask
 #ifdef ENABLE_DUAL_AXIS

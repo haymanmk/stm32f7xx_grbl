@@ -266,9 +266,6 @@ void mc_dwell(float seconds)
 
     return;
   }
-
-  // set debug pin, DEBUG_2_Pin
-  // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
 #endif
 }
 
@@ -524,9 +521,6 @@ void mc_dwell_timer_callback(TimerHandle_t xTimer)
 {
   // reset the EXEC_DWELL flag
   system_clear_exec_user_defined_flag(EXEC_DWELL);
-
-  // reset debug pin, DEBUG_2_Pin
-  // UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
 
   // delete the timer
   if (xTimerDelete(xTimer, 0) != pdPASS)

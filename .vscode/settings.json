@@ -21,5 +21,20 @@
         "utils.h": "c",
         "stm32f7xx_flash_ex.h": "c",
         "timers.h": "c"
-    }
+    },
+    "ROS2.distro": "jazzy",
+    "python.autoComplete.extraPaths": [
+        "/home/hayman/Workspace/ros2/ros2_ws/install/mecharm_pi/lib/python3.12/site-packages",
+        "/home/hayman/Workspace/ros2/ros2_ws/install/mecharm/lib/python3.12/site-packages",
+        "/home/hayman/Workspace/ros2/ros2_ws/install/mycobot_description/lib/python3.12/site-packages",
+        "/home/hayman/Workspace/ros2/ros2_ws/install/my_robot_interfaces/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/hayman/Workspace/ros2/ros2_ws/install/mecharm_pi/lib/python3.12/site-packages",
+        "/home/hayman/Workspace/ros2/ros2_ws/install/mecharm/lib/python3.12/site-packages",
+        "/home/hayman/Workspace/ros2/ros2_ws/install/mycobot_description/lib/python3.12/site-packages",
+        "/home/hayman/Workspace/ros2/ros2_ws/install/my_robot_interfaces/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ]
 }
