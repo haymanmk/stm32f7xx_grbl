@@ -394,7 +394,11 @@ void stepTask(void *pvParameters)
                     stepSetOCMode(timDMAParamsPulse, TIM_OCMODE_TOGGLE);
 
                     // start timer output mode with DMA stream
-                    stepTimeOCStartDMA(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL, (uint32_t *)pulseData, pulseData->length);
+                    HAL_StatusTypeDef ocStatus = stepTimeOCStartDMA(timDMAParamsPulse->htim, timDMAParamsPulse->TIM_CHANNEL, (uint32_t *)pulseData, pulseData->length);
+                    if (ocStatus != HAL_OK)
+                    {
+                        vLoggingPrintf("OCStartDMA fail (first-time) axis=%d status=%d\n", i, ocStatus);
+                    }
 
                     // HAL_DMA_Start_IT enabled TC for all streams; clear it on non-dominant axes so only tc_axis fires
                     if (i != pulseBlock->tc_axis)
@@ -460,9 +464,7 @@ void stepTask(void *pvParameters)
 
 HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
 {
-    // set DEBUG_1_Pin to high ===> signal the start of pulse calculation
-    // UTILS_WRITE_GPIO(DEBUG_1_GPIO_Port, DEBUG_1_Pin, 1);
-
+    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
     static uint8_t getNewBuffer = (1 << NUM_DIMENSIONS) - 1; // bit 0: x axis, bit 1: y axis, bit 2: z axis
     static pulse_block_t *pulseBlock = {0};
     static pulse_t *pulse;
@@ -598,6 +600,7 @@ HAL_StatusTypeDef stepCalculatePulseData(uint32_t st_addr)
     // update variables
     currentCounterValue += cycles_per_tick; // * (amass_level + 1);
 
+    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
     return HAL_OK;
 }
 
@@ -617,7 +620,6 @@ void stepUpdateDMABuffer(uint32_t address)
     // manual update those axes that shall be re-enabled from idle and will stay in idle state in the upcoming cycle
     // to avoid update the same axis twice,
     // loop through all axes
-    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 1);
     for (uint8_t i = 0; i < NUM_DIMENSIONS; i++)
     {
         // pulse data
@@ -647,11 +649,35 @@ void stepUpdateDMABuffer(uint32_t address)
             // resume DMA stream with updated buffer and length
             if (OC_DMA_Started & (1 << i)) // OC DMA might be already started
             {
+                UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, 1);
                 stepResumeDmaStream(axisTimerDMAParams[i].hdma, (uint32_t)pulse, pulse->length, tcie_bit);
+                UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, 0);
             }
             else // OC DMA is not started yet
             {
-                stepTimeOCStartDMA(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL, (uint32_t *)pulse, pulse->length);
+                UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_1_Pin, 1);
+
+                // Clear stale HAL BUSY/LOCKED state before restarting. The DMA TC IRQ is what
+                // normally completes the HAL handshake: TIM_DMADelayPulseCplt resets the TIM
+                // channel state, and HAL_DMA_IRQHandler resets hdma->State to READY and calls
+                // __HAL_UNLOCK(hdma). But this design disables TC on the non-dominant axes, so
+                // none of that runs for them — the channel state stays BUSY, hdma->State stays
+                // BUSY, and (because HAL_DMA_Start_IT only unlocks on its busy/error path, never
+                // on success) hdma->Lock stays HAL_LOCKED. On the next restart, HAL_DMA_Start_IT
+                // hits __HAL_LOCK FIRST and returns HAL_BUSY on the stuck lock, before it ever
+                // checks State — so the stream/CCxDE is never configured (NDTR stuck at 0, CCR
+                // frozen). The stream is genuinely idle here (NDTR=0 => EN auto-cleared in
+                // DMA_NORMAL), so forcing channel state + hdma->State READY and clearing the lock
+                // is safe and lets the (re)start proceed.
+                TIM_CHANNEL_STATE_SET(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL, HAL_TIM_CHANNEL_STATE_READY);
+                axisTimerDMAParams[i].hdma->State = HAL_DMA_STATE_READY;
+                __HAL_UNLOCK(axisTimerDMAParams[i].hdma);
+
+                HAL_StatusTypeDef ocStatus = stepTimeOCStartDMA(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].TIM_CHANNEL, (uint32_t *)pulse, pulse->length);
+                if (ocStatus != HAL_OK)
+                {
+                    vLoggingPrintf("OCStartDMA fail (restart) axis=%d status=%d\n", i, ocStatus);
+                }
 
                 // HAL_DMA_Start_IT enabled TC; clear it again if this isn't the tc_axis
                 if (tcie_bit == 0U)
@@ -659,11 +685,18 @@ void stepUpdateDMABuffer(uint32_t address)
                     axisTimerDMAParams[i].hdma->Instance->CR &= ~DMA_IT_TC;
                 }
 
+                // Prime the first DMA transfer. This axis's CCR still holds its idle value
+                // (0xFFFFFFFF from stepInit), so no natural compare match would ever load
+                // data[0] — generate one compare event to kick the first transfer.
+                // NOTE: only needed here. The resume branch above gets its priming match for
+                // free from the leftover CCR (old last OFF-edge), which also completes the
+                // previous pulse; forcing an event there would re-introduce pulse elongation.
+                GENERATE_TIM_EVENT(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].CompareEventID);
+
                 // set OC DMA started flag
                 OC_DMA_Started |= (1 << i);
+                UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_1_Pin, 0);
             }
-            // generate compare event to trigger the DMA transfer
-            // GENERATE_TIM_EVENT(axisTimerDMAParams[i].htim, axisTimerDMAParams[i].CompareEventID);
         }
         else // idle mode(present) -> idle mode(upcoming) or active mode(present) -> idle mode(upcoming)
         {
@@ -676,7 +709,6 @@ void stepUpdateDMABuffer(uint32_t address)
             currentStepperState &= ~(1 << i);
         }
     }
-    UTILS_WRITE_GPIO(DEBUG_2_GPIO_Port, DEBUG_2_Pin, 0);
 
     // set real-time output pin status
     UTILS_WRITE_GPIO(REALTIME_OUTPUT_GPIO_GROUP, REALTIME_OUTPUT_PIN, (pulseBlock->realtime_output_pin_status ^ 0x01));
@@ -687,7 +719,6 @@ void stepUpdateDMABuffer(uint32_t address)
     // earliest-passed target so the missed match fires on the next tick.
     if (upcomingAxesActiveState)
     {
-        UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, 1);
         uint32_t cnt = MASTER_TIM_HANDLE.Instance->CNT;
         int32_t earliest_delta = 0;
         uint32_t earliest_target = 0;
@@ -716,7 +747,6 @@ void stepUpdateDMABuffer(uint32_t address)
         // Ensure the master timer is running. In the hot ISR path this is a no-op (CEN already 1).
         // After stepGoIdle stopped the timer for motion-end, this is what restarts it for the next motion.
         TIM_START_COUNTER(MASTER_TIM_HANDLE);
-        UTILS_WRITE_GPIO(DEBUG_4_GPIO_Port, DEBUG_4_Pin, 0);
     }
 }
 
@@ -768,6 +798,25 @@ void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
     }
     else
     {
+        // No next buffer queued. Distinguish true motion-end from a transient ring-buffer
+        // underrun: at true end the calc side already ran out of segments and cleared
+        // CALCULATE_PULSE (via stepDisablePulseCalculate from stepper_pulse_generation_isr);
+        // during a mid-motion underrun it is still set and more data is coming, so the master
+        // timer must keep running for the overshoot-guard recovery. Only stop the free-running
+        // master timer at true end — otherwise it keeps counting with the OC channels left in
+        // TOGGLE mode holding stale CCRs, and emits a spurious pulse when CNT eventually wraps
+        // back onto an old compare value. stepGoIdle also sets FORCE_STOP so the next motion's
+        // stepWakeUp realigns currentCounterValue to CNT (avoids the startup delay).
+        // if (!(generalNotification & GENERAL_NOTIFICATION_CALCULATE_PULSE))
+        // {
+        //     stepGoIdle();
+        // }
+        stepGoIdle();
+        // clear the pending DMA request in timer
+        stepClearPendingDmaRequest(&axisTimerDMAParams[X_AXIS]);
+        stepClearPendingDmaRequest(&axisTimerDMAParams[Y_AXIS]);
+        stepClearPendingDmaRequest(&axisTimerDMAParams[Z_AXIS]);
+
         // notify main task to update pulse data
         axis_t axis = GET_AXIS_FROM_TIM_HANDLE(htim);
         generalNotification |= GET_DATA_NOT_AVAILABLE_BIT(axis);
@@ -872,19 +921,16 @@ uint32_t stepGetAvailableDataAddress()
 /*                      Everything about Stepper                         */
 /* ===================================================================== */
 
-// TODO(post-idle-restart-delay): On the third motion (or any post-idle motion whose active axis
-// differs from the previous one), the first pulse does not fire immediately when the timer
-// restarts. Hooking stepUpdateCounterValue() into the FORCE_STOP transition below was not enough.
-// Things to check next session:
-//   1. Confirm stepWakeUp is actually invoked by grbl on every motion-resume (instrument entry).
-//   2. Trace currentCounterValue across stepGoIdle → stepWakeUp → first stepCalculatePulseData
-//      call, and compare against MASTER_TIM CNT after the restart in stepUpdateDMABuffer.
-//   3. Verify pulse_data[0] of the first slot of the new motion vs the snapshot of CNT taken by
-//      the overshoot guard — the guard logs nothing today, may need a debug pin around it.
-//   4. Possibility: stepCalculatePulseData runs and overwrites currentCounterValue before
-//      stepWakeUp ever fires, so the realign is too late. If so, move the realign into the
-//      stepTask "data not available -> data available" transition (around step.c:443 in the
-//      NOT-First-Time recovery branch), guarded by the same FORCE_STOP-cleared signal.
+// Motion-end / idle-restart contract (needs hardware verification):
+// grbl's stepper_pulse_generation_isr calls stepDisablePulseCalculate at end-of-motion (it runs on
+// the calc side, ahead of the DMA, so it must NOT stop the timer there — the DMA is still draining).
+// The actual master-timer stop happens later, on the calc-side-exhausted DMA TC in
+// HAL_TIM_PWM_PulseFinishedCallback, which calls stepGoIdle once CALCULATE_PULSE is clear. That:
+//   - forces OC outputs LOW + stops the master timer (no spurious wrap pulses, no startup drift),
+//   - sets FORCE_STOP so stepWakeUp realigns currentCounterValue to CNT on the next motion,
+//   - clears OC_DMA_Started so the next stepUpdateDMABuffer re-primes via the fresh-start path.
+// Verify on hardware: (1) no spurious pulse during long idles; (2) first pulse of the next motion
+// fires promptly (no realign delay), including the post-idle motion whose active axis differs.
 void stepWakeUp()
 {
     // check if pulse calculation is disabled
@@ -899,9 +945,6 @@ void stepWakeUp()
         // clear Force stop flag
         generalNotification &= ~GENERAL_NOTIFICATION_FORCE_STOP;
     }
-
-    // start pulse calculation
-    // stepEnablePulseCalculate();
 }
 
 void stepGoIdle()
@@ -919,8 +962,13 @@ void stepGoIdle()
     // set Force stop flag
     generalNotification |= GENERAL_NOTIFICATION_FORCE_STOP;
 
-    // stop pulse calculation
-    // stepDisablePulseCalculate();
+    // Force the next motion through the fresh-start priming path. While the master timer was
+    // free-running, the resume branch in stepUpdateDMABuffer could rely on a leftover-CCR compare
+    // match to prime the first DMA transfer. After a full stop that match no longer occurs (CNT is
+    // frozen at/past the old CCR), so clear OC_DMA_Started: the next stepUpdateDMABuffer takes the
+    // "not started" branch and issues an explicit priming compare event. Safe here because the OC
+    // outputs were just forced LOW, so there is no pending pulse to elongate.
+    OC_DMA_Started = 0;
 }
 
 /**
@@ -986,6 +1034,7 @@ uint8_t stepIsPulseDataExhausted()
 HAL_StatusTypeDef stepTimeOCStartDMA(TIM_HandleTypeDef *htim, uint32_t Channel, const uint32_t *pData,
                                      uint16_t Length)
 {
+    HAL_StatusTypeDef ret = HAL_OK;
     HAL_StatusTypeDef status = HAL_OK;
     //   uint32_t tmpsmcr;
 
@@ -1025,9 +1074,10 @@ HAL_StatusTypeDef stepTimeOCStartDMA(TIM_HandleTypeDef *htim, uint32_t Channel, 
         htim->hdma[TIM_DMA_ID_CC1]->XferErrorCallback = TIM_DMAError;
 
         /* Enable the DMA stream */
-        if (HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC1], (uint32_t)pData, (uint32_t)&htim->Instance->CCR1,
-                             Length) != HAL_OK)
+        if ((ret=HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC1], (uint32_t)pData, (uint32_t)&htim->Instance->CCR1,
+                             Length)) != HAL_OK)
         {
+            vLoggingPrintf("HAL_DMA_Start_IT fail for CC1: status=%d\n", ret);
             /* Return error status */
             return HAL_ERROR;
         }
@@ -1047,9 +1097,10 @@ HAL_StatusTypeDef stepTimeOCStartDMA(TIM_HandleTypeDef *htim, uint32_t Channel, 
         htim->hdma[TIM_DMA_ID_CC2]->XferErrorCallback = TIM_DMAError;
 
         /* Enable the DMA stream */
-        if (HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC2], (uint32_t)pData, (uint32_t)&htim->Instance->CCR2,
-                             Length) != HAL_OK)
+        if ((ret=HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC2], (uint32_t)pData, (uint32_t)&htim->Instance->CCR2,
+                             Length)) != HAL_OK)
         {
+            vLoggingPrintf("HAL_DMA_Start_IT fail for CC2: status=%d\n", ret);
             /* Return error status */
             return HAL_ERROR;
         }
@@ -1069,9 +1120,10 @@ HAL_StatusTypeDef stepTimeOCStartDMA(TIM_HandleTypeDef *htim, uint32_t Channel, 
         htim->hdma[TIM_DMA_ID_CC3]->XferErrorCallback = TIM_DMAError;
 
         /* Enable the DMA stream */
-        if (HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC3], (uint32_t)pData, (uint32_t)&htim->Instance->CCR3,
-                             Length) != HAL_OK)
+        if ((ret=HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC3], (uint32_t)pData, (uint32_t)&htim->Instance->CCR3,
+                             Length)) != HAL_OK)
         {
+            vLoggingPrintf("HAL_DMA_Start_IT fail for CC3: status=%d\n", ret);
             /* Return error status */
             return HAL_ERROR;
         }
@@ -1090,9 +1142,10 @@ HAL_StatusTypeDef stepTimeOCStartDMA(TIM_HandleTypeDef *htim, uint32_t Channel, 
         htim->hdma[TIM_DMA_ID_CC4]->XferErrorCallback = TIM_DMAError;
 
         /* Enable the DMA stream */
-        if (HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC4], (uint32_t)pData, (uint32_t)&htim->Instance->CCR4,
-                             Length) != HAL_OK)
+        if ((ret=HAL_DMA_Start_IT(htim->hdma[TIM_DMA_ID_CC4], (uint32_t)pData, (uint32_t)&htim->Instance->CCR4,
+                             Length)) != HAL_OK)
         {
+            vLoggingPrintf("HAL_DMA_Start_IT fail for CC4: status=%d\n", ret);
             /* Return error status */
             return HAL_ERROR;
         }

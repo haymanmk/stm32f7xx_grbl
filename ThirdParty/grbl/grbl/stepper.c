@@ -586,9 +586,6 @@ void stepper_pulse_generation_isr()
 #endif
   if (st.counter_y > st.exec_block->step_event_count)
   {
-    // set DEBUG_3_PIN (PD6) high
-    // UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_SET);
-
     st.step_outbits |= (1 << Y_STEP_BIT);
 #if defined(ENABLE_DUAL_AXIS) && (DUAL_AXIS_SELECT == Y_AXIS)
     st.step_outbits_dual = (1 << DUAL_STEP_BIT);
@@ -615,9 +612,6 @@ void stepper_pulse_generation_isr()
       }
 #endif
     }
-
-    // set DEBUG_3_PIN (PD6) low
-    // UTILS_WRITE_GPIO(DEBUG_3_GPIO_Port, DEBUG_3_Pin, GPIO_PIN_RESET);
   }
 #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
   st.counter_z += st.steps[Z_AXIS];

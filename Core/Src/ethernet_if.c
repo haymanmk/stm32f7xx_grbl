@@ -188,7 +188,7 @@ void vApplicationIPNetworkEventHook_Multi(eIPCallbackEvent_t eNetworkEvent,
 
             xTasksAlreadyCreated = pdTRUE;
 
-            vStartSimpleTCPServerTasks(4 * configMINIMAL_STACK_SIZE, tskIDLE_PRIORITY);
+            vStartSimpleTCPServerTasks(4 * configMINIMAL_STACK_SIZE, tskIDLE_PRIORITY+1);
         }
     }
     /* Print out the network configuration, which may have come from a DHCP
@@ -287,7 +287,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
                         "EchoServer",
                         usUsedStackSize,
                         (void *)xConnectedSocket,
-                        tskIDLE_PRIORITY + 1,
+                        tskIDLE_PRIORITY+1,
                         &echoClientRxTaskHandle);
 
             // Create the serial task which is an interface between the serial port and the ethernet
@@ -295,7 +295,7 @@ static void prvCreateTCPServerSocketTasks(void *pvParameters)
                         "SerialTask",
                         configMINIMAL_STACK_SIZE * 2,
                         (void *)xConnectedSocket,
-                        tskIDLE_PRIORITY + 1,
+                        tskIDLE_PRIORITY+1,
                         &serialTaskHandle);
 
             // wait here until the connection is closed
