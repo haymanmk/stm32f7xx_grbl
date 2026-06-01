@@ -97,6 +97,13 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  // Enable the Cortex-M7 instruction cache. Without it, code runs straight from
+  // Flash with wait-states (FLASH_LATENCY_7 @ 216 MHz), making hot paths like
+  // stepCalculatePulseData several times slower than necessary. The I-cache only
+  // caches instruction fetches, so there is no DMA coherency concern (unlike the
+  // D-cache, which would need MPU/cache-maintenance for the DMA buffers).
+  SCB_EnableICache();
+
   // initialize the handle of semaphore for logging
   // to protect the critical section in the vLoggingPrintf function.
   loggingSemaphoreHandle = xSemaphoreCreateBinary();
